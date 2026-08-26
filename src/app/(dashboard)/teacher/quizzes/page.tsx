@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import { formatQuizStatus } from '@/lib/utils'
-import { FileCheck, School } from 'lucide-react'
+import { FileCheck } from 'lucide-react'
 import { CreateQuizForm } from '@/components/create-quiz-form'
+import { QuizCard } from '@/components/quiz-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,14 +29,15 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
     name: c.name as string,
   }))
 
-  // Buscar avaliações
+  // Buscar avaliações com histórico de tentativas vinculadas
   const { data: quizzesData } = await supabase
     .from('quizzes')
     .select(`
       *,
       classrooms:classroom_id (
         name
-      )
+      ),
+      attempts (count)
     `)
     .eq('teacher_id', user?.id || '')
     .order('created_at', { ascending: false })
@@ -53,7 +53,7 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
             Avaliações e Provas
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Crie avaliações em rascunho ou publique para suas turmas.
+            Crie, publique, edite, exclua e visualize o histórico de avaliações geradas.
           </p>
         </div>
       </div>
@@ -63,7 +63,12 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
 
       {/* LISTA DE AVALIAÇÕES */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-white">Avaliações Criadas</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Histórico de Avaliações</h2>
+          <span className="text-xs font-semibold text-slate-400">
+            {quizzes.length} {quizzes.length === 1 ? 'avaliação' : 'avaliações'}
+          </span>
+        </div>
 
         {quizzes.length === 0 ? (
           <div className="rounded-3xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-12 text-center">
@@ -75,31 +80,9 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {quizzes.map((q: any) => {
-              const statusInfo = formatQuizStatus(q.status)
-              return (
-                <Card key={q.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base font-bold text-white">{q.title}</CardTitle>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
-                        {statusInfo.label}
-                      </span>
-                    </div>
-                    <CardDescription className="text-xs flex items-center gap-1 mt-1 text-indigo-400 font-medium">
-                      <School className="h-3 w-3" />
-                      {q.classrooms?.name || 'Sala Geral'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-xs text-slate-400">
-                    <p>Tipo: <span className="font-semibold text-slate-200">{q.question_type}</span></p>
-                    <p className="text-[11px] text-slate-500">
-                      Criada em {new Date(q.created_at).toLocaleDateString('pt-BR')}
-                    </p>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {quizzes.map((quiz) => (
+              <QuizCard key={quiz.id} quiz={quiz} classrooms={classrooms} />
+            ))}
           </div>
         )}
       </div>

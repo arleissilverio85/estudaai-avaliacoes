@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from '@/components/ui/badge'
 import { Copy, Check, Users, FileCheck, ArrowRight, Trash2 } from 'lucide-react'
 import { deleteClassroom } from '@/app/(dashboard)/teacher/actions'
+import { EditClassroomDialog } from '@/components/edit-classroom-dialog'
 
 interface ClassroomCardProps {
   classroom: {
@@ -40,7 +41,7 @@ export function ClassroomCard({ classroom, isTeacher = false }: ClassroomCardPro
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (confirm(`Deseja realmente remover a sala "${classroom.name}"?`)) {
+    if (confirm(`Deseja realmente remover a sala "${classroom.name}" e todos os vínculos de alunos e provas?`)) {
       setIsDeleting(true)
       await deleteClassroom(classroom.id)
       setIsDeleting(false)
@@ -118,14 +119,17 @@ export function ClassroomCard({ classroom, isTeacher = false }: ClassroomCardPro
 
       <CardFooter className="flex items-center justify-between pt-3 border-t border-slate-800/80">
         {isTeacher && (
-          <button
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="rounded-lg p-2 text-slate-500 hover:bg-rose-950/50 hover:text-rose-400 transition-colors border border-transparent hover:border-rose-900/50"
-            title="Excluir Sala"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <EditClassroomDialog classroom={classroom} />
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="rounded-lg p-2 text-slate-500 hover:bg-rose-950/50 hover:text-rose-400 transition-colors border border-transparent hover:border-rose-900/50"
+              title="Excluir Sala"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         )}
 
         <Link

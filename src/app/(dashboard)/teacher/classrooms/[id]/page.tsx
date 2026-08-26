@@ -5,6 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatQuizStatus } from '@/lib/utils'
 import { Classroom, Quiz } from '@/types/database.types'
+import { EditClassroomDialog } from '@/components/edit-classroom-dialog'
+import { EditQuizDialog } from '@/components/edit-quiz-dialog'
+import { deleteQuiz } from '@/app/(dashboard)/teacher/actions'
 import {
   ArrowLeft,
   Users,
@@ -12,6 +15,7 @@ import {
   Plus,
   School,
   Clock,
+  Trash2,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -73,6 +77,8 @@ export default async function ClassroomDetailPage({ params }: Props) {
     email: s.profiles?.email || '',
   }))
 
+  const classroomList = [{ id: classroom.id, name: classroom.name }]
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* NAVEGAÇÃO VOLTAR */}
@@ -95,9 +101,12 @@ export default async function ClassroomDetailPage({ params }: Props) {
                 <School className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-                  {classroom.name}
-                </h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+                    {classroom.name}
+                  </h1>
+                  <EditClassroomDialog classroom={classroom} />
+                </div>
                 <p className="text-sm text-slate-400">
                   Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')}
                 </p>
@@ -181,6 +190,10 @@ export default async function ClassroomDetailPage({ params }: Props) {
                       <p className="text-[11px] text-slate-500">
                         {quiz.question_count} questões • Tipo: {quiz.question_type}
                       </p>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <EditQuizDialog quiz={quiz} classrooms={classroomList} />
                     </div>
                   </div>
                 )

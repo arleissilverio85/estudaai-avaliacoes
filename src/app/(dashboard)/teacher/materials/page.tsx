@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import { formatMaterialStatus } from '@/lib/utils'
-import { BookOpen, FileText, Info } from 'lucide-react'
+import { BookOpen, Info } from 'lucide-react'
 import { CreateMaterialForm } from '@/components/create-material-form'
+import { MaterialCard } from '@/components/material-card'
 import { Material } from '@/types/database.types'
 
 export const dynamic = 'force-dynamic'
@@ -31,7 +30,7 @@ export default async function MaterialsPage() {
             Materiais de Estudo
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Estrutura base para futuro suporte a RAG, PDFs, documentos e geração automática de questões.
+            Gerencie, edite ou remova materiais estruturados para suas turmas.
           </p>
         </div>
       </div>
@@ -42,8 +41,8 @@ export default async function MaterialsPage() {
         <div className="text-xs space-y-1">
           <p className="font-bold text-white">Fundação Estrutural (Etapa 1)</p>
           <p className="text-indigo-300/80 leading-relaxed">
-            Nesta etapa, o upload de arquivos e embeddings por IA ainda não estão ativos.
-            A estrutura de banco de dados e os status (<span className="font-mono font-semibold text-indigo-300">pending</span>, <span className="font-mono font-semibold text-indigo-300">processing</span>, <span className="font-mono font-semibold text-indigo-300">ready</span>, <span className="font-mono font-semibold text-indigo-300">error</span>) já estão totalmente modelados para as próximas etapas.
+            Nesta etapa, o CRUD de materiais permite criar, editar e excluir registros vinculados ao professor.
+            Os status (<span className="font-mono font-semibold text-indigo-300">pending</span>, <span className="font-mono font-semibold text-indigo-300">processing</span>, <span className="font-mono font-semibold text-indigo-300">ready</span>, <span className="font-mono font-semibold text-indigo-300">error</span>) estão preparados para o futuro módulo de RAG/upload.
           </p>
         </div>
       </div>
@@ -53,45 +52,26 @@ export default async function MaterialsPage() {
 
       {/* LISTAGEM DE MATERIAIS */}
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-white">Materiais Cadastrados</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">Materiais Cadastrados</h2>
+          <span className="text-xs font-semibold text-slate-400">
+            {materials.length} {materials.length === 1 ? 'material' : 'materiais'}
+          </span>
+        </div>
 
         {materials.length === 0 ? (
           <div className="rounded-3xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-12 text-center">
             <BookOpen className="mx-auto h-12 w-12 text-slate-600" />
             <h3 className="mt-3 text-base font-bold text-white">Nenhum material registrado</h3>
             <p className="mt-1 text-xs text-slate-400">
-              Cadastre um item acima para testar a persistência na tabela <span className="font-mono text-indigo-400">materials</span>.
+              Cadastre um item acima para testar a persistência e edição na tabela <span className="font-mono text-indigo-400">materials</span>.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {materials.map((m) => {
-              const statusInfo = formatMaterialStatus(m.processing_status)
-              return (
-                <Card key={m.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base font-bold text-white">{m.title}</CardTitle>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
-                        {statusInfo.label}
-                      </span>
-                    </div>
-                    {m.description && (
-                      <CardDescription className="text-xs text-slate-400">{m.description}</CardDescription>
-                    )}
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-xs text-slate-400">
-                    <p className="flex items-center gap-1.5 font-mono text-slate-300">
-                      <FileText className="h-3.5 w-3.5 text-indigo-400" />
-                      {m.file_name || 'arquivo.pdf'}
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      Criado em {new Date(m.created_at).toLocaleDateString('pt-BR')}
-                    </p>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {materials.map((m) => (
+              <MaterialCard key={m.id} material={m} />
+            ))}
           </div>
         )}
       </div>
