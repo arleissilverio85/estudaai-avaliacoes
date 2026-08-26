@@ -5,6 +5,7 @@ import { formatQuizStatus } from '@/lib/utils'
 import { EditQuizDialog } from '@/components/edit-quiz-dialog'
 import { QuizReviewClient } from '@/components/quiz-review-client'
 import { PublishQuizButton } from '@/components/publish-quiz-button'
+import { ClassroomRankingTable, RankingEntry } from '@/components/classroom-ranking-table'
 import {
   ArrowLeft,
   School,
@@ -13,6 +14,7 @@ import {
   Sparkles,
   Info,
   CheckCircle2,
+  Trophy,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -69,10 +71,55 @@ export default async function QuizReviewPage({ params }: Props) {
     .eq('quiz_id', id)
     .order('order_index', { ascending: true })
 
+  // 3. Buscar as tentativas realizadas pelos alunos desta prova
+  const { data: attemptsData } = await (supabase.from('attempts') as any)
+    .select(`
+      id,
+      score,
+      started_at,
+      finished_at,
+      quiz_id,
+      student_id,
+      profiles:student_id (
+        id,
+        name,
+        email
+      ),
+      answers:answers (
+        id,
+        is_correct
+      )
+    `)
+    .eq('quiz_id', id)
+    .not('finished_at', 'is', null)
+    .order('score', { ascending: false })
+
   const questions = (questionsData || []).map((q: any) => ({
     ...q,
     options: (q.question_options || []).sort((a: any, b: any) => a.order_index - b.order_index),
   }))
+
+  const rankingEntries: RankingEntry[] = (attemptsData || []).map((att: any) => {
+    const answersList = att.answers || []
+    const correctCount = answersList.filter((a: any) => a.is_correct).length
+    const totalAnswers = answersList.length || questions.length || 10
+    const wrongCount = Math.max(0, totalAnswers - correctCount)
+
+    return {
+      attemptId: att.id,
+      studentId: att.student_id,
+      studentName: att.profiles?.name || 'Aluno',
+      studentEmail: att.profiles?.email || '',
+      classroomName: quizData.classrooms?.name || 'Geral',
+      quizId: att.quiz_id,
+      quizTitle: quizData.title,
+      score: Number(att.score) || 0,
+      totalQuestions: totalAnswers,
+      correctAnswers: correctCount,
+      wrongAnswers: wrongCount,
+      finishedAt: att.finished_at || new Date().toISOString(),
+    }
+  })
 
   const statusInfo = formatQuizStatus(quizData.status)
   const isPublished = quizData.status === 'published'
@@ -177,8 +224,23 @@ export default async function QuizReviewPage({ params }: Props) {
         </div>
       </div>
 
-      {/* COMPONENTE INTERATIVO DE VISUALIZAÇÃO E IMPRESSÃO */}
-      <QuizReviewClient questions={questions} quizTitle={quizData.title} />
+      {/* SEÇÃO 1: RANKING DOS ALUNOS QUE FIZERAM ESTA PROVA */}
+      <div className="space-y-4 print:hidden">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-amber-400" />
+          <h2 className="text-lg font-bold text-white">Desempenho dos Alunos nesta Avaliação</h2>
+        </div>
+
+        <ClassroomRankingTable
+          entries={rankingEntries}
+          classroomName={quizData.classrooms?.name || 'Turma'}
+        />
+      </div>
+
+      {/* SEÇÃO 2: COMPONENTE INTERATIVO DE VISUALIZAÇÃO E IMPRESSÃO DAS QUESTÕES */}
+      <div className="pt-4 border-t border-slate-800">
+        <QuizReviewClient questions={questions} quizTitle={quizData.title} />
+      </div>
     </div>
   )
 }

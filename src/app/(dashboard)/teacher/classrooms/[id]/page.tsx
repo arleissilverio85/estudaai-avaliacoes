@@ -10,6 +10,7 @@ import { EditQuizDialog } from '@/components/edit-quiz-dialog'
 import { UploadMaterialDialog } from '@/components/upload-material-dialog'
 import { GenerateQuizAiDialog } from '@/components/generate-quiz-ai-dialog'
 import { MaterialCard } from '@/components/material-card'
+import { ClassroomRankingTable, RankingEntry } from '@/components/classroom-ranking-table'
 import {
   ArrowLeft,
   Users,
@@ -19,6 +20,7 @@ import {
   Clock,
   BookOpen,
   Sparkles,
+  Trophy,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -80,6 +82,61 @@ export default async function ClassroomDetailPage({ params }: Props) {
   const quizzes = (quizzesData || []) as Quiz[]
   const materials = (materialsData || []) as Material[]
 
+  // 5. Buscar tentativas e ranking dos alunos desta turma específica
+  const quizIds = quizzes.map((q) => q.id)
+  let rankingEntries: RankingEntry[] = []
+
+  if (quizIds.length > 0) {
+    const { data: attemptsData } = await (supabase.from('attempts') as any)
+      .select(`
+        id,
+        score,
+        started_at,
+        finished_at,
+        quiz_id,
+        student_id,
+        quizzes:quiz_id (
+          id,
+          title,
+          question_count
+        ),
+        profiles:student_id (
+          id,
+          name,
+          email
+        ),
+        answers:answers (
+          id,
+          is_correct
+        )
+      `)
+      .in('quiz_id', quizIds)
+      .not('finished_at', 'is', null)
+      .order('score', { ascending: false })
+
+    rankingEntries = (attemptsData || []).map((att: any) => {
+      const answersList = att.answers || []
+      const correctCount = answersList.filter((a: any) => a.is_correct).length
+      const totalAnswers = answersList.length || att.quizzes?.question_count || 10
+      const wrongCount = Math.max(0, totalAnswers - correctCount)
+
+      return {
+        attemptId: att.id,
+        studentId: att.student_id,
+        studentName: att.profiles?.name || 'Aluno',
+        studentEmail: att.profiles?.email || '',
+        classroomName: classroom.name,
+        quizId: att.quiz_id,
+        quizTitle: att.quizzes?.title || 'Avaliação',
+        score: Number(att.score) || 0,
+        totalQuestions: totalAnswers,
+        correctAnswers: correctCount,
+        wrongAnswers: wrongCount,
+        finishedAt: att.finished_at || new Date().toISOString(),
+      }
+    })
+  }
+
   const students = (studentsData || []).map((s: any) => ({
     id: s.id,
     joined_at: s.joined_at,
@@ -118,7 +175,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
                   <EditClassroomDialog classroom={classroom} />
                 </div>
                 <p className="text-sm text-slate-400">
-                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')} • {students.length} alunos
+                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')} • {students.length} alunos matriculados
                 </p>
               </div>
             </div>
@@ -145,8 +202,22 @@ export default async function ClassroomDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* SEÇÃO 1: MATERIAIS DIDÁTICOS DESTA SALA */}
+      {/* SEÇÃO 1: RANKING E CLASSIFICAÇÃO DA TURMA (EXCLUSIVO DESTA SALA) */}
       <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-amber-400" />
+          <h2 className="text-lg font-bold text-white">Ranking de Desempenho da Turma ({classroom.name})</h2>
+        </div>
+
+        <ClassroomRankingTable
+          entries={rankingEntries}
+          classroomName={classroom.name}
+          quizzes={quizzes.map((q) => ({ id: q.id, title: q.title }))}
+        />
+      </div>
+
+      {/* SEÇÃO 2: MATERIAIS DIDÁTICOS DESTA SALA */}
+      <div className="space-y-4 pt-4 border-t border-slate-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-emerald-400" />
@@ -176,8 +247,8 @@ export default async function ClassroomDetailPage({ params }: Props) {
         )}
       </div>
 
-      {/* SEÇÃO 2: GRID DUPLO: AVALIAÇÕES E ALUNOS */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      {/* SEÇÃO 3: GRID DUPLO: AVALIAÇÕES E ALUNOS */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 pt-4 border-t border-slate-800">
         {/* COLUNA 1 & 2: AVALIAÇÕES DA SALA */}
         <div className="space-y-4 lg:col-span-2">
           <div className="flex items-center justify-between">
