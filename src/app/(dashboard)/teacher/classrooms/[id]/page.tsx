@@ -1,0 +1,232 @@
+import { createClient } from '@/lib/supabase/server'
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { formatQuizStatus } from '@/lib/utils'
+import { Classroom, Quiz } from '@/types/database.types'
+import {
+  ArrowLeft,
+  Users,
+  FileCheck,
+  Plus,
+  School,
+  Clock,
+} from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
+
+interface Props {
+  params: Promise<{ id: string }>
+}
+
+export default async function ClassroomDetailPage({ params }: Props) {
+  const { id } = await params
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // Buscar detalhes da sala garantindo que pertence ao professor
+  const { data: classroomData } = await supabase
+    .from('classrooms')
+    .select('*')
+    .eq('id', id)
+    .eq('teacher_id', user?.id || '')
+    .maybeSingle()
+
+  const classroom = classroomData as Classroom | null
+
+  if (!classroom) {
+    notFound()
+  }
+
+  // Buscar alunos matriculados
+  const { data: studentsData } = await supabase
+    .from('classroom_students')
+    .select(`
+      id,
+      joined_at,
+      profiles:student_id (
+        id,
+        name,
+        email
+      )
+    `)
+    .eq('classroom_id', id)
+    .order('joined_at', { ascending: false })
+
+  // Buscar avaliações criadas para esta sala
+  const { data: quizzesData } = await supabase
+    .from('quizzes')
+    .select('*')
+    .eq('classroom_id', id)
+    .order('created_at', { ascending: false })
+
+  const quizzes = (quizzesData || []) as Quiz[]
+
+  const students = (studentsData || []).map((s: any) => ({
+    id: s.id,
+    joined_at: s.joined_at,
+    name: s.profiles?.name || 'Aluno',
+    email: s.profiles?.email || '',
+  }))
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-300">
+      {/* NAVEGAÇÃO VOLTAR */}
+      <div>
+        <Link
+          href="/teacher/dashboard"
+          className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar para Salas de Aula
+        </Link>
+      </div>
+
+      {/* CABEÇALHO DA SALA */}
+      <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <School className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+                  {classroom.name}
+                </h1>
+                <p className="text-sm text-slate-500">
+                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+            </div>
+
+            {classroom.description && (
+              <p className="mt-2 text-sm text-slate-600 max-w-2xl">
+                {classroom.description}
+              </p>
+            )}
+          </div>
+
+          {/* CÓDIGO DE ACESSO */}
+          <div className="flex flex-col items-start md:items-end gap-1.5 rounded-2xl bg-slate-50 p-4 border border-slate-200/60">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Código de Acesso dos Alunos
+            </span>
+            <span className="font-mono text-2xl font-black text-indigo-700 tracking-wider">
+              {classroom.join_code}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              Compartilhe com a turma para que possam entrar
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* GRID DUPLO: AVALIAÇÕES E ALUNOS */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* COLUNA 1 & 2: AVALIAÇÕES DA SALA */}
+        <div className="space-y-4 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileCheck className="h-5 w-5 text-indigo-600" />
+              <h2 className="text-lg font-bold text-slate-900">Avaliações da Sala</h2>
+            </div>
+            <Link href={`/teacher/quizzes?classroom_id=${classroom.id}`}>
+              <Button size="sm" variant="primary">
+                <Plus className="h-4 w-4" />
+                Nova Avaliação
+              </Button>
+            </Link>
+          </div>
+
+          {!quizzes || quizzes.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+              <FileCheck className="mx-auto h-10 w-10 text-slate-300" />
+              <h3 className="mt-2 text-sm font-bold text-slate-800">Nenhuma avaliação nesta sala</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Crie quizzes ou provas para aplicar com os alunos desta turma.
+              </p>
+              <div className="mt-4">
+                <Link href={`/teacher/quizzes?classroom_id=${classroom.id}`}>
+                  <Button size="sm" variant="outline">
+                    <Plus className="h-3.5 w-3.5" />
+                    Criar Avaliação
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {quizzes.map((quiz) => {
+                const statusInfo = formatQuizStatus(quiz.status)
+                return (
+                  <div
+                    key={quiz.id}
+                    className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">{quiz.title}</h4>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
+                          {statusInfo.label}
+                        </span>
+                      </div>
+                      {quiz.description && (
+                        <p className="text-xs text-slate-500 line-clamp-1">{quiz.description}</p>
+                      )}
+                      <p className="text-[11px] text-slate-400">
+                        {quiz.question_count} questões • Tipo: {quiz.question_type}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* COLUNA 3: ALUNOS MATRICULADOS */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-indigo-600" />
+              <h2 className="text-lg font-bold text-slate-900">Alunos Matriculados</h2>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+              {students.length}
+            </span>
+          </div>
+
+          {students.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+              <Users className="mx-auto h-10 w-10 text-slate-300" />
+              <h3 className="mt-2 text-sm font-bold text-slate-800">Nenhum aluno entrou ainda</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Passe o código <strong className="font-mono text-indigo-600">{classroom.join_code}</strong> aos alunos.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-sm overflow-hidden">
+              {students.map((student) => (
+                <div key={student.id} className="p-3.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{student.name}</p>
+                    <p className="text-xs text-slate-500">{student.email}</p>
+                  </div>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(student.joined_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

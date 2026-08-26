@@ -1,0 +1,150 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { logout } from '@/app/(auth)/actions'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { GraduationCap, LayoutDashboard, BookOpen, FileCheck, LogOut, Menu, X } from 'lucide-react'
+import { useState } from 'react'
+import { UserRole } from '@/types/database.types'
+
+interface NavbarProps {
+  user: {
+    name: string
+    email: string
+    role: UserRole
+  }
+}
+
+export function Navbar({ user }: NavbarProps) {
+  const pathname = usePathname()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const isTeacher = user.role === 'teacher'
+
+  const navLinks = isTeacher
+    ? [
+        { href: '/teacher/dashboard', label: 'Salas de Aula', icon: LayoutDashboard },
+        { href: '/teacher/materials', label: 'Materiais', icon: BookOpen },
+        { href: '/teacher/quizzes', label: 'Avaliações', icon: FileCheck },
+      ]
+    : [
+        { href: '/student/dashboard', label: 'Minhas Salas', icon: LayoutDashboard },
+      ]
+
+  return (
+    <nav className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between">
+          {/* LOGO & BADGE */}
+          <div className="flex items-center gap-4">
+            <Link
+              href={isTeacher ? '/teacher/dashboard' : '/student/dashboard'}
+              className="flex items-center gap-2 group"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-200 transition-transform group-hover:scale-105">
+                <GraduationCap className="h-5 w-5" />
+              </div>
+              <span className="text-xl font-black tracking-tight text-slate-900">
+                Estuda<span className="text-indigo-600">Aí</span>
+              </span>
+            </Link>
+
+            <Badge variant={isTeacher ? 'indigo' : 'success'}>
+              {isTeacher ? 'Professor' : 'Aluno'}
+            </Badge>
+          </div>
+
+          {/* DESKTOP NAVIGATION */}
+          <div className="hidden md:flex md:items-center md:gap-1">
+            {navLinks.map((link) => {
+              const Icon = link.icon
+              const isActive = pathname.startsWith(link.href)
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
+                    isActive
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {link.label}
+                </Link>
+              )
+            })}
+          </div>
+
+          {/* USER INFO & LOGOUT */}
+          <div className="hidden md:flex md:items-center md:gap-4">
+            <div className="text-right">
+              <p className="text-sm font-semibold text-slate-900 leading-tight">{user.name}</p>
+              <p className="text-xs text-slate-500">{user.email}</p>
+            </div>
+
+            <form action={logout}>
+              <Button type="submit" variant="ghost" size="sm" className="text-slate-600 hover:text-rose-600">
+                <LogOut className="h-4 w-4" />
+                <span className="hidden lg:inline">Sair</span>
+              </Button>
+            </form>
+          </div>
+
+          {/* MOBILE MENU TOGGLE */}
+          <div className="flex md:hidden">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+              aria-label="Abrir menu"
+            >
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* MOBILE DROPDOWN */}
+      {mobileMenuOpen && (
+        <div className="border-b border-slate-200 bg-white px-4 pt-2 pb-4 md:hidden">
+          <div className="space-y-1">
+            {navLinks.map((link) => {
+              const Icon = link.icon
+              const isActive = pathname.startsWith(link.href)
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-base font-semibold ${
+                    isActive
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  {link.label}
+                </Link>
+              )
+            })}
+          </div>
+
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <div className="mb-3 px-3">
+              <p className="text-sm font-bold text-slate-900">{user.name}</p>
+              <p className="text-xs text-slate-500">{user.email}</p>
+            </div>
+            <form action={logout}>
+              <Button type="submit" variant="outline" size="sm" className="w-full justify-center text-rose-600 hover:bg-rose-50 border-rose-200">
+                <LogOut className="h-4 w-4 mr-2" />
+                Encerrar Sessão
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
+    </nav>
+  )
+}
