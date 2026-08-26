@@ -11,6 +11,7 @@ import { UploadMaterialDialog } from '@/components/upload-material-dialog'
 import { GenerateQuizAiDialog } from '@/components/generate-quiz-ai-dialog'
 import { MaterialCard } from '@/components/material-card'
 import { ClassroomRankingTable, RankingEntry } from '@/components/classroom-ranking-table'
+import { ClassroomStudentsTable, StudentWithAttempts } from '@/components/classroom-students-table'
 import {
   ArrowLeft,
   Users,
@@ -21,6 +22,7 @@ import {
   BookOpen,
   Sparkles,
   Trophy,
+  UserCheck,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -81,10 +83,11 @@ export default async function ClassroomDetailPage({ params }: Props) {
 
   const quizzes = (quizzesData || []) as Quiz[]
   const materials = (materialsData || []) as Material[]
-
-  // 5. Buscar tentativas e ranking dos alunos desta turma específica
   const quizIds = quizzes.map((q) => q.id)
+
+  // 5. Buscar tentativas e respostas detalhadas dos alunos desta turma específica
   let rankingEntries: RankingEntry[] = []
+  let attemptsByStudent: Record<string, any[]> = {}
 
   if (quizIds.length > 0) {
     const { data: attemptsData } = await (supabase.from('attempts') as any)
@@ -107,7 +110,19 @@ export default async function ClassroomDetailPage({ params }: Props) {
         ),
         answers:answers (
           id,
-          is_correct
+          question_id,
+          selected_option_id,
+          is_correct,
+          questions:question_id (
+            id,
+            question_text,
+            explanation,
+            question_options (
+              id,
+              option_text,
+              is_correct
+            )
+          )
         )
       `)
       .in('quiz_id', quizIds)
@@ -135,13 +150,60 @@ export default async function ClassroomDetailPage({ params }: Props) {
         finishedAt: att.finished_at || new Date().toISOString(),
       }
     })
+
+    // Agrupar tentativas por aluno com dados completos das perguntas e respostas
+    ;(attemptsData || []).forEach((att: any) => {
+      const answersList = att.answers || []
+      const correctCount = answersList.filter((a: any) => a.is_correct).length
+      const totalAnswers = answersList.length || att.quizzes?.question_count || 10
+      const wrongCount = Math.max(0, totalAnswers - correctCount)
+
+      const formattedQuestions = answersList.map((ans: any) => {
+        const q = ans.questions
+        const options = q?.question_options || []
+        const selectedOpt = options.find((o: any) => o.id === ans.selected_option_id)
+        const correctOpt = options.find((o: any) => o.is_correct)
+
+        return {
+          questionId: q?.id || ans.question_id,
+          questionText: q?.question_text || 'Questão',
+          explanation: q?.explanation || null,
+          selectedOptionText: selectedOpt?.option_text || null,
+          correctOptionText: correctOpt?.option_text || null,
+          isCorrect: Boolean(ans.is_correct),
+          options: options.map((o: any) => ({
+            id: o.id,
+            optionText: o.option_text,
+            isCorrect: Boolean(o.is_correct),
+          })),
+        }
+      })
+
+      if (!attemptsByStudent[att.student_id]) {
+        attemptsByStudent[att.student_id] = []
+      }
+
+      attemptsByStudent[att.student_id].push({
+        attemptId: att.id,
+        quizId: att.quiz_id,
+        quizTitle: att.quizzes?.title || 'Avaliação',
+        score: Number(att.score) || 0,
+        totalQuestions: totalAnswers,
+        correctAnswers: correctCount,
+        wrongAnswers: wrongCount,
+        finishedAt: att.finished_at || new Date().toISOString(),
+        questions: formattedQuestions,
+      })
+    })
   }
 
-  const students = (studentsData || []).map((s: any) => ({
-    id: s.id,
-    joined_at: s.joined_at,
+  // 6. Estruturar lista completa de alunos com suas tentativas
+  const studentsWithAttempts: StudentWithAttempts[] = (studentsData || []).map((s: any) => ({
+    id: s.profiles?.id || s.id,
     name: s.profiles?.name || 'Aluno',
     email: s.profiles?.email || '',
+    joinedAt: s.joined_at,
+    attempts: attemptsByStudent[s.profiles?.id || s.id] || [],
   }))
 
   const classroomList = [{ id: classroom.id, name: classroom.name }]
@@ -175,7 +237,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
                   <EditClassroomDialog classroom={classroom} />
                 </div>
                 <p className="text-sm text-slate-400">
-                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')} • {students.length} alunos matriculados
+                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')} • {studentsWithAttempts.length} alunos matriculados
                 </p>
               </div>
             </div>
@@ -202,11 +264,11 @@ export default async function ClassroomDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* SEÇÃO 1: RANKING E CLASSIFICAÇÃO DA TURMA (EXCLUSIVO DESTA SALA) */}
+      {/* SEÇÃO 1: RANKING E CLASSIFICAÇÃO DA TURMA */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Trophy className="h-5 w-5 text-amber-400" />
-          <h2 className="text-lg font-bold text-white">Ranking de Desempenho da Turma ({classroom.name})</h2>
+          <h2 className="text-lg font-bold text-white">🏆 Ranking de Desempenho da Turma ({classroom.name})</h2>
         </div>
 
         <ClassroomRankingTable
@@ -216,12 +278,31 @@ export default async function ClassroomDetailPage({ params }: Props) {
         />
       </div>
 
-      {/* SEÇÃO 2: MATERIAIS DIDÁTICOS DESTA SALA */}
+      {/* SEÇÃO 2: ALUNOS DA SALA E RESULTADOS INDIVIDUAIS COM RESPOSTAS */}
+      <div className="space-y-4 pt-4 border-t border-slate-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-lg font-bold text-white">👥 Alunos Matriculados & Resultados Individuais</h2>
+          </div>
+          <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold text-slate-300 border border-slate-700">
+            {studentsWithAttempts.length} Alunos
+          </span>
+        </div>
+
+        <ClassroomStudentsTable
+          students={studentsWithAttempts}
+          classroomName={classroom.name}
+          quizzes={quizzes.map((q) => ({ id: q.id, title: q.title }))}
+        />
+      </div>
+
+      {/* SEÇÃO 3: MATERIAIS DIDÁTICOS DESTA SALA */}
       <div className="space-y-4 pt-4 border-t border-slate-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-emerald-400" />
-            <h2 className="text-lg font-bold text-white">Materiais Didáticos da Turma</h2>
+            <h2 className="text-lg font-bold text-white">📚 Materiais Didáticos da Turma</h2>
           </div>
           <div className="flex items-center gap-2">
             <UploadMaterialDialog
@@ -247,112 +328,71 @@ export default async function ClassroomDetailPage({ params }: Props) {
         )}
       </div>
 
-      {/* SEÇÃO 3: GRID DUPLO: AVALIAÇÕES E ALUNOS */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 pt-4 border-t border-slate-800">
-        {/* COLUNA 1 & 2: AVALIAÇÕES DA SALA */}
-        <div className="space-y-4 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileCheck className="h-5 w-5 text-indigo-400" />
-              <h2 className="text-lg font-bold text-white">Avaliações da Sala</h2>
-            </div>
-            <GenerateQuizAiDialog
-              classrooms={classroomList}
-              materials={materials}
-              initialClassroomId={classroom.id}
-            />
+      {/* SEÇÃO 4: AVALIAÇÕES DA SALA */}
+      <div className="space-y-4 pt-4 border-t border-slate-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileCheck className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-lg font-bold text-white">📝 Avaliações da Sala</h2>
           </div>
+          <GenerateQuizAiDialog
+            classrooms={classroomList}
+            materials={materials}
+            initialClassroomId={classroom.id}
+          />
+        </div>
 
-          {quizzes.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-8 text-center">
-              <FileCheck className="mx-auto h-10 w-10 text-slate-600" />
-              <h3 className="mt-2 text-sm font-bold text-slate-200">Nenhuma avaliação nesta sala</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Gere avaliações automáticas com IA a partir dos materiais desta turma.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {quizzes.map((quiz) => {
-                const statusInfo = formatQuizStatus(quiz.status)
-                return (
-                  <div
-                    key={quiz.id}
-                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-md transition-all hover:border-indigo-500/50 hover:shadow-lg"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/teacher/quizzes/${quiz.id}`}
-                          className="text-sm font-bold text-white hover:text-indigo-400 transition-colors"
-                        >
-                          {quiz.title}
-                        </Link>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                      {quiz.description && (
-                        <p className="text-xs text-slate-400 line-clamp-1">{quiz.description}</p>
-                      )}
-                      <p className="text-[11px] text-slate-500">
-                        {quiz.question_count} questões • Tipo: {quiz.question_type}
-                      </p>
-                    </div>
-
+        {quizzes.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-8 text-center">
+            <FileCheck className="mx-auto h-10 w-10 text-slate-600" />
+            <h3 className="mt-2 text-sm font-bold text-slate-200">Nenhuma avaliação nesta sala</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Gere avaliações automáticas com IA a partir dos materiais desta turma.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {quizzes.map((quiz) => {
+              const statusInfo = formatQuizStatus(quiz.status)
+              return (
+                <div
+                  key={quiz.id}
+                  className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-md transition-all hover:border-indigo-500/50 hover:shadow-lg"
+                >
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/teacher/quizzes/${quiz.id}`}
-                        className="rounded-lg bg-indigo-600/20 px-3 py-1.5 text-xs font-bold text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-500/30"
+                        className="text-sm font-bold text-white hover:text-indigo-400 transition-colors"
                       >
-                        Ver Prova
+                        {quiz.title}
                       </Link>
-                      <EditQuizDialog quiz={quiz} classrooms={classroomList} />
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
+                        {statusInfo.label}
+                      </span>
                     </div>
+                    {quiz.description && (
+                      <p className="text-xs text-slate-400 line-clamp-1">{quiz.description}</p>
+                    )}
+                    <p className="text-[11px] text-slate-500">
+                      {quiz.question_count} questões • Tipo: {quiz.question_type}
+                    </p>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
 
-        {/* COLUNA 3: ALUNOS MATRICULADOS */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-indigo-400" />
-              <h2 className="text-lg font-bold text-white">Alunos Matriculados</h2>
-            </div>
-            <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-slate-300 border border-slate-700">
-              {students.length}
-            </span>
-          </div>
-
-          {students.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-8 text-center">
-              <Users className="mx-auto h-10 w-10 text-slate-600" />
-              <h3 className="mt-2 text-sm font-bold text-slate-200">Nenhum aluno entrou ainda</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Passe o código <strong className="font-mono text-indigo-400">{classroom.join_code}</strong> aos alunos.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 divide-y divide-slate-800 shadow-md overflow-hidden">
-              {students.map((student) => (
-                <div key={student.id} className="p-3.5 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-slate-100">{student.name}</p>
-                    <p className="text-xs text-slate-400">{student.email}</p>
+                  <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-800">
+                    <Link
+                      href={`/teacher/quizzes/${quiz.id}`}
+                      className="rounded-lg bg-indigo-600/20 px-3 py-1.5 text-xs font-bold text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-500/30"
+                    >
+                      Ver Prova & Ranking
+                    </Link>
+                    <EditQuizDialog quiz={quiz} classrooms={classroomList} />
                   </div>
-                  <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {new Date(student.joined_at).toLocaleDateString('pt-BR')}
-                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
