@@ -4,11 +4,17 @@ import { useState, useActionState, useEffect, useRef } from 'react'
 import { uploadAndProcessMaterial, ActionResponse } from '@/app/(dashboard)/teacher/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { UploadCloud, FileText, X, CheckCircle, Sparkles, FileSpreadsheet, FileCode, Presentation } from 'lucide-react'
+import { UploadCloud, FileText, X, Sparkles, FileSpreadsheet, FileCode, Presentation, School } from 'lucide-react'
 
-export function UploadMaterialDialog() {
+interface UploadMaterialDialogProps {
+  classrooms?: { id: string; name: string }[]
+  initialClassroomId?: string
+}
+
+export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: UploadMaterialDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedClassroom, setSelectedClassroom] = useState<string>(initialClassroomId || classrooms[0]?.id || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [state, formAction, isPending] = useActionState<ActionResponse, FormData>(
@@ -65,7 +71,7 @@ export function UploadMaterialDialog() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">Upload de Material Didático</h3>
-                  <p className="text-xs text-slate-400">PDF, Word (DOCX), Slides (PPTX), Planilhas ou TXT</p>
+                  <p className="text-xs text-slate-400">Vincule o arquivo a uma turma para a IA gerar a prova</p>
                 </div>
               </div>
               <button
@@ -84,12 +90,35 @@ export function UploadMaterialDialog() {
                 </div>
               )}
 
+              {/* SELEÇÃO DA SALA DE AULA VINCULADA */}
+              {classrooms.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <School className="h-3.5 w-3.5 text-indigo-400" />
+                    Vincular à Turma / Sala de Aula *
+                  </label>
+                  <select
+                    name="classroom_id"
+                    value={selectedClassroom}
+                    onChange={(e) => setSelectedClassroom(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="">-- Material Geral (Todas as Turmas) --</option>
+                    {classrooms.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <Input
                   label="Título do Material *"
                   name="title"
                   required
-                  placeholder="Ex: Apostila de Direito Administrativo - Módulo 1"
+                  placeholder="Ex: Apostila de Direito Administrativo - Sala B"
                 />
               </div>
 
@@ -97,7 +126,7 @@ export function UploadMaterialDialog() {
                 <Input
                   label="Descrição (Opcional)"
                   name="description"
-                  placeholder="Ex: Conteúdo para prova bimestral"
+                  placeholder="Ex: Conteúdo para a prova do 1º Bimestre"
                 />
               </div>
 

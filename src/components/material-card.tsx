@@ -3,16 +3,19 @@
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { formatMaterialStatus } from '@/lib/utils'
-import { FileText, Trash2, Calendar, Download, Sparkles, FileSpreadsheet, Presentation, FileCode } from 'lucide-react'
+import { FileText, Trash2, Calendar, Download, Sparkles, FileSpreadsheet, Presentation, FileCode, School } from 'lucide-react'
 import { deleteMaterial, getMaterialDownloadUrl } from '@/app/(dashboard)/teacher/actions'
 import { EditMaterialDialog } from '@/components/edit-material-dialog'
 import { Material } from '@/types/database.types'
 
 interface MaterialCardProps {
-  material: Material
+  material: Material & {
+    classrooms?: { name: string } | null
+  }
+  classrooms?: { id: string; name: string }[]
 }
 
-export function MaterialCard({ material }: MaterialCardProps) {
+export function MaterialCard({ material, classrooms = [] }: MaterialCardProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const statusInfo = formatMaterialStatus(material.processing_status)
@@ -61,6 +64,7 @@ export function MaterialCard({ material }: MaterialCardProps) {
   }
 
   const hasContentText = Boolean(material.content_text && material.content_text.length > 20)
+  const classroomName = material.classrooms?.name
 
   return (
     <Card className="flex flex-col justify-between border-slate-800 bg-slate-900/80 transition-all hover:border-slate-700 hover:shadow-lg">
@@ -72,6 +76,13 @@ export function MaterialCard({ material }: MaterialCardProps) {
               {statusInfo.label}
             </span>
           </div>
+
+          {/* TURMA VINCULADA */}
+          <div className="flex items-center gap-1.5 text-xs text-indigo-400 font-semibold mt-1">
+            <School className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{classroomName ? `Turma: ${classroomName}` : 'Material Geral'}</span>
+          </div>
+
           {material.description && (
             <CardDescription className="text-xs text-slate-400 line-clamp-2 mt-1">
               {material.description}
@@ -100,7 +111,7 @@ export function MaterialCard({ material }: MaterialCardProps) {
             {hasContentText ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
                 <Sparkles className="h-3.5 w-3.5" />
-                Texto indexado para IA
+                Indexado para IA
               </span>
             ) : (
               <span className="text-[11px] text-slate-500">Sem texto indexado</span>
@@ -129,7 +140,7 @@ export function MaterialCard({ material }: MaterialCardProps) {
         )}
 
         <div className="flex items-center gap-1">
-          <EditMaterialDialog material={material} />
+          <EditMaterialDialog material={material} classrooms={classrooms} />
           <button
             onClick={handleDelete}
             disabled={isDeleting}

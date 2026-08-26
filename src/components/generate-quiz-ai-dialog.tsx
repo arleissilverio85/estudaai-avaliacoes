@@ -5,17 +5,20 @@ import { useRouter } from 'next/navigation'
 import { generateQuizWithAI, ActionResponse } from '@/app/(dashboard)/teacher/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Sparkles, FileCheck, X, BookOpen, School, BrainCircuit, Sliders, Check } from 'lucide-react'
+import { Sparkles, FileCheck, X, BookOpen, School, BrainCircuit, Sliders, Check, AlertCircle } from 'lucide-react'
 
 interface GenerateQuizAiDialogProps {
   classrooms: { id: string; name: string }[]
-  materials: { id: string; title: string; file_name?: string | null }[]
+  materials: { id: string; title: string; file_name?: string | null; classroom_id?: string | null }[]
   initialClassroomId?: string
 }
 
 export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId }: GenerateQuizAiDialogProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
+  const [selectedClassroomId, setSelectedClassroomId] = useState<string>(
+    initialClassroomId || classrooms[0]?.id || ''
+  )
   const [questionCount, setQuestionCount] = useState<number>(5)
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
   const [questionType, setQuestionType] = useState<'multiple_choice' | 'true_false' | 'mixed'>('multiple_choice')
@@ -31,6 +34,27 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
       router.push(`/teacher/quizzes/${state.data.quizId}`)
     }
   }, [state?.success, state?.data?.quizId, router])
+
+  // Filtrar materiais compatíveis com a sala selecionada (materiais da sala + materiais gerais)
+  const availableMaterials = materials.filter(
+    (m) => !m.classroom_id || m.classroom_id === selectedClassroomId
+  )
+
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string>(
+    availableMaterials[0]?.id || ''
+  )
+
+  // Atualizar o material selecionado ao mudar de sala
+  useEffect(() => {
+    if (availableMaterials.length > 0) {
+      // Se o material atual não pertence à nova lista, seleciona o primeiro disponível
+      if (!availableMaterials.some((m) => m.id === selectedMaterialId)) {
+        setSelectedMaterialId(availableMaterials[0].id)
+      }
+    } else {
+      setSelectedMaterialId('')
+    }
+  }, [selectedClassroomId, availableMaterials, selectedMaterialId])
 
   if (materials.length === 0) {
     return (
@@ -73,7 +97,7 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
                       GPT-4o-mini
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400">Questões criadas estritamente a partir do seu material</p>
+                  <p className="text-xs text-slate-400">Questões criadas estritamente a partir do material da turma</p>
                 </div>
               </div>
               <button
@@ -97,16 +121,17 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
                 </div>
               )}
 
-              {/* SELEÇÃO DE SALA E MATERIAL */}
+              {/* SELEÇÃO DINÂMICA DE SALA E MATERIAL */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <School className="h-3.5 w-3.5 text-indigo-400" />
-                    Turma / Sala de Aula *
+                    1. Selecione a Turma / Sala *
                   </label>
                   <select
                     name="classroom_id"
-                    defaultValue={initialClassroomId || classrooms[0]?.id}
+                    value={selectedClassroomId}
+                    onChange={(e) => setSelectedClassroomId(e.target.value)}
                     required
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
                   >
@@ -121,67 +146,48 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <BookOpen className="h-3.5 w-3.5 text-emerald-400" />
-                    Material Didático Base *
+                    2. Material da Turma *
                   </label>
-                  <select
-                    name="material_id"
-                    required
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                  >
-                    {materials.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.title}
-                      </option>
-                    ))}
-                  </select>
+                  {availableMaterials.length === 0 ? (
+                    <div className="rounded-xl border border-amber-800/40 bg-amber-950/40 p-2.5 text-xs text-amber-300 flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>Nenhum material vinculado a esta turma.</span>
+                    </div>
+                  ) : (
+                    <select
+                      name="material_id"
+                      value={selectedMaterialId}
+                      onChange={(e) => setSelectedMaterialId(e.target.value)}
+                      required
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                    >
+                      {availableMaterials.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.title} {m.classroom_id ? '' : '(Geral)'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
               <div>
                 <Input
-                  label="Título da Avaliação (Opcional)"
+                  label="Título Personalizado da Prova (Opcional)"
                   name="title"
-                  placeholder="Ex: Prova 1 - Direito Constitucional (ou deixe vazio para gerar automático)"
+                  placeholder="Ex: Avaliação Bimestral - Direito Administrativo"
                 />
               </div>
 
-              {/* TIPO DE QUESTÃO */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Tipo de Questões
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'multiple_choice', label: 'Múltipla Escolha', desc: '4 alternativas' },
-                    { id: 'true_false', label: 'Verdadeiro / Falso', desc: 'Assertivas' },
-                    { id: 'mixed', label: 'Misto', desc: 'Mescla ambos' },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setQuestionType(t.id as any)}
-                      className={`p-3 rounded-2xl border text-center transition-all ${
-                        questionType === t.id
-                          ? 'border-indigo-500 bg-indigo-950/60 text-white shadow-md shadow-indigo-600/20'
-                          : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <p className="text-xs font-bold">{t.label}</p>
-                      <p className="text-[10px] text-slate-400">{t.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* QUANTIDADE DE QUESTÕES (5 a 15) */}
+              {/* CONTROLE 1: NÚMERO DE QUESTÕES (5 A 15) */}
               <div className="space-y-2 rounded-2xl bg-slate-950/80 p-4 border border-slate-800">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                     <Sliders className="h-3.5 w-3.5 text-indigo-400" />
                     Quantidade de Questões
                   </label>
-                  <span className="font-mono text-base font-black text-indigo-400">
-                    {questionCount} questões
+                  <span className="rounded-lg bg-indigo-600/30 px-2.5 py-1 font-mono text-xs font-bold text-indigo-300 border border-indigo-500/40">
+                    {questionCount} Questões
                   </span>
                 </div>
                 <input
@@ -190,56 +196,105 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
                   max="15"
                   step="1"
                   value={questionCount}
-                  onChange={(e) => setQuestionCount(parseInt(e.target.value, 10))}
-                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  onChange={(e) => setQuestionCount(Number(e.target.value))}
+                  className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 />
                 <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>5 questões</span>
-                  <span>10 questões</span>
-                  <span>15 questões</span>
+                  <span>5 (Rápida)</span>
+                  <span>10 (Padrão)</span>
+                  <span>15 (Completa)</span>
                 </div>
               </div>
 
-              {/* NÍVEL DE DIFICULDADE */}
+              {/* CONTROLE 2: FORMATO DAS QUESTÕES */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Tipo de Questões
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuestionType('multiple_choice')}
+                    className={`rounded-xl p-3 text-left border transition-all text-xs font-semibold ${
+                      questionType === 'multiple_choice'
+                        ? 'border-indigo-500 bg-indigo-950/60 text-white shadow-md shadow-indigo-500/20'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold">Múltipla Escolha</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">4 alternativas (A-D) sortidas</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setQuestionType('true_false')}
+                    className={`rounded-xl p-3 text-left border transition-all text-xs font-semibold ${
+                      questionType === 'true_false'
+                        ? 'border-indigo-500 bg-indigo-950/60 text-white shadow-md shadow-indigo-500/20'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold">Verdadeiro ou Falso</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">2 opções (V / F)</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setQuestionType('mixed')}
+                    className={`rounded-xl p-3 text-left border transition-all text-xs font-semibold ${
+                      questionType === 'mixed'
+                        ? 'border-indigo-500 bg-indigo-950/60 text-white shadow-md shadow-indigo-500/20'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold">Misto</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Mescla de formatos</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* CONTROLE 3: NÍVEL DE DIFICULDADE */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Nível de Dificuldade
                 </label>
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'easy', label: 'Fácil', desc: 'Conceitos diretos', color: 'border-emerald-500/60 text-emerald-300' },
-                    { id: 'medium', label: 'Médio', desc: 'Interpretação e prática', color: 'border-indigo-500/60 text-indigo-300' },
-                    { id: 'hard', label: 'Difícil', desc: 'Análise e cenários', color: 'border-amber-500/60 text-amber-300' },
-                  ].map((d) => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => setDifficulty(d.id as any)}
-                      className={`p-2.5 rounded-2xl border text-center transition-all ${
-                        difficulty === d.id
-                          ? `border-2 bg-slate-800/80 shadow-md ${d.color}`
-                          : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <p className="text-xs font-bold">{d.label}</p>
-                      <p className="text-[10px] text-slate-400">{d.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setDifficulty('easy')}
+                    className={`rounded-xl p-2.5 text-center border transition-all text-xs font-bold ${
+                      difficulty === 'easy'
+                        ? 'border-emerald-500 bg-emerald-950/60 text-emerald-300'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    Fácil
+                  </button>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Status Inicial da Avaliação
-                </label>
-                <select
-                  name="status"
-                  defaultValue="draft"
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="draft">Rascunho (Permite revisar as questões antes dos alunos acessarem)</option>
-                  <option value="published">Publicado Imediatamente (Visível para os alunos da turma)</option>
-                </select>
+                  <button
+                    type="button"
+                    onClick={() => setDifficulty('medium')}
+                    className={`rounded-xl p-2.5 text-center border transition-all text-xs font-bold ${
+                      difficulty === 'medium'
+                        ? 'border-indigo-500 bg-indigo-950/60 text-indigo-300'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    Médio
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDifficulty('hard')}
+                    className={`rounded-xl p-2.5 text-center border transition-all text-xs font-bold ${
+                      difficulty === 'hard'
+                        ? 'border-rose-500 bg-rose-950/60 text-rose-300'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    Difícil
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
@@ -257,10 +312,10 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
                   variant="primary"
                   size="md"
                   isLoading={isPending}
-                  className="font-bold px-6 shadow-lg shadow-indigo-600/30"
+                  disabled={availableMaterials.length === 0}
                 >
-                  <Sparkles className="h-4 w-4 mr-1.5 animate-pulse" />
-                  {isPending ? 'IA Consultando Material...' : 'Gerar Prova com GPT-4o-mini'}
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  {isPending ? 'Elaborando Questões...' : 'Gerar Avaliação Agora'}
                 </Button>
               </div>
             </form>

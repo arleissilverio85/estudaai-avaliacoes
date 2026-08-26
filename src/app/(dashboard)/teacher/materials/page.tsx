@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { BookOpen, Sparkles } from 'lucide-react'
 import { UploadMaterialDialog } from '@/components/upload-material-dialog'
 import { MaterialCard } from '@/components/material-card'
-import { Material } from '@/types/database.types'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,12 +12,26 @@ export default async function MaterialsPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // 1. Buscar materiais do professor com dados da turma vinculada
   const { data: materialsData } = await (supabase.from('materials') as any)
-    .select('*')
+    .select(`
+      *,
+      classrooms:classroom_id (
+        id,
+        name
+      )
+    `)
     .eq('teacher_id', user?.id || '')
     .order('created_at', { ascending: false })
 
-  const materials = (materialsData || []) as Material[]
+  // 2. Buscar as salas de aula do professor para o dropdown de vinculação
+  const { data: classroomsData } = await (supabase.from('classrooms') as any)
+    .select('id, name')
+    .eq('teacher_id', user?.id || '')
+    .order('name', { ascending: true })
+
+  const materials = materialsData || []
+  const classrooms = classroomsData || []
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -29,11 +42,11 @@ export default async function MaterialsPage() {
             Materiais de Estudo
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Envie PDFs, apresentações de slides, documentos Word ou planilhas para gerar avaliações automáticas por IA.
+            Envie PDFs, slides, documentos Word ou planilhas vinculados a cada turma para gerar avaliações por IA.
           </p>
         </div>
         <div>
-          <UploadMaterialDialog />
+          <UploadMaterialDialog classrooms={classrooms} />
         </div>
       </div>
 
@@ -43,9 +56,9 @@ export default async function MaterialsPage() {
           <Sparkles className="h-4 w-4" />
         </div>
         <div className="text-xs space-y-1">
-          <p className="font-bold text-white">Base de Conhecimento para a IA</p>
+          <p className="font-bold text-white">Base de Conhecimento por Turma</p>
           <p className="text-indigo-300/80 leading-relaxed">
-            Ao enviar um arquivo pelo celular ou computador, o sistema extrai e indexa seu conteúdo automaticamente. Em seguida, na aba <strong>Avaliações</strong>, a IA (GPT-4o-mini) consultará estritamente estes materiais para formular questões com gabarito e justificativa.
+            Ao enviar um material, você pode vinculá-lo à turma correspondente (ex: Sala A, Sala B, Sala C). Na hora de gerar a prova, a IA consultará exclusivamente os materiais daquela turma para formular as questões com gabarito e justificativa!
           </p>
         </div>
       </div>
@@ -67,13 +80,13 @@ export default async function MaterialsPage() {
               Envie um arquivo PDF, Word, Slide ou TXT para alimentar o gerador inteligente de avaliações.
             </p>
             <div className="mt-6">
-              <UploadMaterialDialog />
+              <UploadMaterialDialog classrooms={classrooms} />
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {materials.map((m) => (
-              <MaterialCard key={m.id} material={m} />
+            {materials.map((m: any) => (
+              <MaterialCard key={m.id} material={m} classrooms={classrooms} />
             ))}
           </div>
         )}

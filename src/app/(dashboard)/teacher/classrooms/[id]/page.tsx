@@ -4,10 +4,12 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatQuizStatus } from '@/lib/utils'
-import { Classroom, Quiz } from '@/types/database.types'
+import { Classroom, Quiz, Material } from '@/types/database.types'
 import { EditClassroomDialog } from '@/components/edit-classroom-dialog'
 import { EditQuizDialog } from '@/components/edit-quiz-dialog'
-import { deleteQuiz } from '@/app/(dashboard)/teacher/actions'
+import { UploadMaterialDialog } from '@/components/upload-material-dialog'
+import { GenerateQuizAiDialog } from '@/components/generate-quiz-ai-dialog'
+import { MaterialCard } from '@/components/material-card'
 import {
   ArrowLeft,
   Users,
@@ -15,7 +17,8 @@ import {
   Plus,
   School,
   Clock,
-  Trash2,
+  BookOpen,
+  Sparkles,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +35,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Buscar detalhes da sala garantindo que pertence ao professor
+  // 1. Buscar detalhes da sala garantindo que pertence ao professor
   const { data: classroomData } = await supabase
     .from('classrooms')
     .select('*')
@@ -46,7 +49,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
     notFound()
   }
 
-  // Buscar alunos matriculados
+  // 2. Buscar alunos matriculados
   const { data: studentsData } = await supabase
     .from('classroom_students')
     .select(`
@@ -61,14 +64,21 @@ export default async function ClassroomDetailPage({ params }: Props) {
     .eq('classroom_id', id)
     .order('joined_at', { ascending: false })
 
-  // Buscar avaliações criadas para esta sala
-  const { data: quizzesData } = await supabase
-    .from('quizzes')
+  // 3. Buscar materiais vinculados a esta sala
+  const { data: materialsData } = await (supabase.from('materials') as any)
+    .select('*')
+    .eq('teacher_id', user?.id || '')
+    .or(`classroom_id.eq.${id},classroom_id.is.null`)
+    .order('created_at', { ascending: false })
+
+  // 4. Buscar avaliações criadas para esta sala
+  const { data: quizzesData } = await (supabase.from('quizzes') as any)
     .select('*')
     .eq('classroom_id', id)
     .order('created_at', { ascending: false })
 
   const quizzes = (quizzesData || []) as Quiz[]
+  const materials = (materialsData || []) as Material[]
 
   const students = (studentsData || []).map((s: any) => ({
     id: s.id,
@@ -108,7 +118,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
                   <EditClassroomDialog classroom={classroom} />
                 </div>
                 <p className="text-sm text-slate-400">
-                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')}
+                  Criada em {new Date(classroom.created_at).toLocaleDateString('pt-BR')} • {students.length} alunos
                 </p>
               </div>
             </div>
@@ -129,13 +139,44 @@ export default async function ClassroomDetailPage({ params }: Props) {
               {classroom.join_code}
             </span>
             <span className="text-[11px] text-slate-500">
-              Compartilhe com a turma para que possam entrar
+              Compartilhe este código com a turma
             </span>
           </div>
         </div>
       </div>
 
-      {/* GRID DUPLO: AVALIAÇÕES E ALUNOS */}
+      {/* SEÇÃO 1: MATERIAIS DIDÁTICOS DESTA SALA */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-emerald-400" />
+            <h2 className="text-lg font-bold text-white">Materiais Didáticos da Turma</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <UploadMaterialDialog
+              classrooms={classroomList}
+              initialClassroomId={classroom.id}
+            />
+          </div>
+        </div>
+
+        {materials.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-6 text-center">
+            <BookOpen className="mx-auto h-8 w-8 text-slate-600" />
+            <p className="mt-2 text-xs text-slate-400">
+              Nenhum material vinculado a esta turma ainda. Envie arquivos para que a IA possa gerar provas baseadas neles.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {materials.map((m) => (
+              <MaterialCard key={m.id} material={m} classrooms={classroomList} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* SEÇÃO 2: GRID DUPLO: AVALIAÇÕES E ALUNOS */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* COLUNA 1 & 2: AVALIAÇÕES DA SALA */}
         <div className="space-y-4 lg:col-span-2">
@@ -144,12 +185,11 @@ export default async function ClassroomDetailPage({ params }: Props) {
               <FileCheck className="h-5 w-5 text-indigo-400" />
               <h2 className="text-lg font-bold text-white">Avaliações da Sala</h2>
             </div>
-            <Link href={`/teacher/quizzes?classroom_id=${classroom.id}`}>
-              <Button size="sm" variant="primary">
-                <Plus className="h-4 w-4 mr-1" />
-                Nova Avaliação
-              </Button>
-            </Link>
+            <GenerateQuizAiDialog
+              classrooms={classroomList}
+              materials={materials}
+              initialClassroomId={classroom.id}
+            />
           </div>
 
           {quizzes.length === 0 ? (
@@ -157,16 +197,8 @@ export default async function ClassroomDetailPage({ params }: Props) {
               <FileCheck className="mx-auto h-10 w-10 text-slate-600" />
               <h3 className="mt-2 text-sm font-bold text-slate-200">Nenhuma avaliação nesta sala</h3>
               <p className="text-xs text-slate-400 mt-1">
-                Crie quizzes ou provas para aplicar com os alunos desta turma.
+                Gere avaliações automáticas com IA a partir dos materiais desta turma.
               </p>
-              <div className="mt-4">
-                <Link href={`/teacher/quizzes?classroom_id=${classroom.id}`}>
-                  <Button size="sm" variant="outline">
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    Criar Avaliação
-                  </Button>
-                </Link>
-              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -179,7 +211,12 @@ export default async function ClassroomDetailPage({ params }: Props) {
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-white">{quiz.title}</h4>
+                        <Link
+                          href={`/teacher/quizzes/${quiz.id}`}
+                          className="text-sm font-bold text-white hover:text-indigo-400 transition-colors"
+                        >
+                          {quiz.title}
+                        </Link>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
                           {statusInfo.label}
                         </span>
@@ -192,7 +229,13 @@ export default async function ClassroomDetailPage({ params }: Props) {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/teacher/quizzes/${quiz.id}`}
+                        className="rounded-lg bg-indigo-600/20 px-3 py-1.5 text-xs font-bold text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-500/30"
+                      >
+                        Ver Prova
+                      </Link>
                       <EditQuizDialog quiz={quiz} classrooms={classroomList} />
                     </div>
                   </div>

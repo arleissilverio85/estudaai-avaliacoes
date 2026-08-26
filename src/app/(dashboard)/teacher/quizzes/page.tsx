@@ -31,7 +31,7 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
 
   // 2. Buscar materiais do professor
   const { data: materialsData } = await (supabase.from('materials') as any)
-    .select('id, title, file_name')
+    .select('id, title, file_name, classroom_id')
     .eq('teacher_id', user?.id || '')
     .order('title', { ascending: true })
 
@@ -39,6 +39,7 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
     id: m.id as string,
     title: m.title as string,
     file_name: m.file_name as string | null,
+    classroom_id: m.classroom_id as string | null,
   }))
 
   // 3. Buscar avaliações com histórico de tentativas

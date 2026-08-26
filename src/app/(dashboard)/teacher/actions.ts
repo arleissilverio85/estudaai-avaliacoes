@@ -122,6 +122,7 @@ export async function deleteClassroom(classroomId: string): Promise<ActionRespon
 export async function uploadAndProcessMaterial(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const title = formData.get('title') as string
   const description = formData.get('description') as string | null
+  const classroom_id = formData.get('classroom_id') as string | null
   const file = formData.get('file') as File | null
 
   if (!title || title.trim().length === 0) {
@@ -158,10 +159,11 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
     // 2. Extração de texto usando os parsers multiformato
     const extractedText = await extractTextFromFile(buffer, file.name, file.type)
 
-    // 3. Persistência na tabela materials com o texto extraído
+    // 3. Persistência na tabela materials com a sala vinculada
     const { data: materialData, error: dbError } = await (supabase.from('materials') as any)
       .insert({
         teacher_id: user.id,
+        classroom_id: classroom_id && classroom_id.trim().length > 0 ? classroom_id : null,
         title: title.trim(),
         description: description?.trim() || null,
         file_name: file.name,
@@ -179,9 +181,12 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
     }
 
     revalidatePath('/teacher/materials')
+    if (classroom_id) {
+      revalidatePath(`/teacher/classrooms/${classroom_id}`)
+    }
     return {
       success: true,
-      message: `Material "${title}" enviado e processado com sucesso! Conteúdo pronto para gerar avaliações por IA.`,
+      message: `Material "${title}" enviado e vinculado à turma com sucesso!`,
       data: materialData,
     }
   } catch (err: any) {
@@ -193,6 +198,7 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
 export async function createMaterial(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const title = formData.get('title') as string
   const description = formData.get('description') as string | null
+  const classroom_id = formData.get('classroom_id') as string | null
   const file_name = formData.get('file_name') as string | null
   const file_type = formData.get('file_type') as string | null
 
@@ -208,6 +214,7 @@ export async function createMaterial(prevState: ActionResponse | null, formData:
   const { data, error } = await (supabase.from('materials') as any)
     .insert({
       teacher_id: user.id,
+      classroom_id: classroom_id && classroom_id.trim().length > 0 ? classroom_id : null,
       title: title.trim(),
       description: description?.trim() || null,
       file_name: file_name?.trim() || 'documento_base.pdf',
@@ -223,6 +230,9 @@ export async function createMaterial(prevState: ActionResponse | null, formData:
   }
 
   revalidatePath('/teacher/materials')
+  if (classroom_id) {
+    revalidatePath(`/teacher/classrooms/${classroom_id}`)
+  }
   return { success: true, message: 'Material registrado com sucesso!', data }
 }
 
@@ -245,6 +255,7 @@ export async function getMaterialDownloadUrl(filePath: string): Promise<{ url?: 
 
 export async function updateMaterial(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const materialId = formData.get('id') as string
+  const classroom_id = formData.get('classroom_id') as string | null
   const title = formData.get('title') as string
   const description = formData.get('description') as string | null
   const file_name = formData.get('file_name') as string | null
@@ -261,6 +272,7 @@ export async function updateMaterial(prevState: ActionResponse | null, formData:
 
   const { data, error } = await (supabase.from('materials') as any)
     .update({
+      classroom_id: classroom_id && classroom_id.trim().length > 0 ? classroom_id : null,
       title: title.trim(),
       description: description?.trim() || null,
       file_name: file_name?.trim() || 'documento_base.pdf',

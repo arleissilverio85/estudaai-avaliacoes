@@ -42,6 +42,7 @@ export type ClassroomStudent = {
 export type Material = {
   id: string
   teacher_id: string
+  classroom_id?: string | null
   title: string
   description: string | null
   file_name: string | null
