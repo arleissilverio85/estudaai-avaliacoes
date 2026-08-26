@@ -302,6 +302,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 3.4. Funções Helper RLS com SECURITY DEFINER (Eliminam recursão circular)
+CREATE OR REPLACE FUNCTION public.is_classroom_student(p_classroom_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.classroom_students
+        WHERE classroom_id = p_classroom_id AND student_id = p_user_id
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_classroom_teacher(p_classroom_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.classrooms
+        WHERE id = p_classroom_id AND teacher_id = p_user_id
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_quiz_teacher(p_quiz_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.quizzes
+        WHERE id = p_quiz_id AND teacher_id = p_user_id
+    );
+$$;
+
 -- ==============================================================================
 -- 4. ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
@@ -318,96 +358,61 @@ ALTER TABLE public.attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.answers ENABLE ROW LEVEL SECURITY;
 
 -- 4.1. POLICIES: PROFILES
--- Usuário visualiza e edita seu próprio perfil
-CREATE POLICY "profiles_select_own"
+CREATE POLICY "profiles_select_authenticated"
     ON public.profiles FOR SELECT
-    USING (auth.uid() = id);
+    TO authenticated
+    USING (true);
 
 CREATE POLICY "profiles_update_own"
     ON public.profiles FOR UPDATE
     USING (auth.uid() = id)
     WITH CHECK (auth.uid() = id);
 
--- Usuários podem ver dados públicos básicos de colegas da mesma sala ou professor da sala
-CREATE POLICY "profiles_select_classroom_peers"
-    ON public.profiles FOR SELECT
+-- 4.2. POLICIES: CLASSROOMS
+CREATE POLICY "classrooms_select"
+    ON public.classrooms FOR SELECT
     USING (
-        EXISTS (
-            -- Professor vê alunos das suas salas
-            SELECT 1 FROM public.classrooms c
-            JOIN public.classroom_students cs ON cs.classroom_id = c.id
-            WHERE c.teacher_id = auth.uid() AND cs.student_id = profiles.id
-        )
+        teacher_id = auth.uid()
         OR
-        EXISTS (
-            -- Aluno vê professor da sala em que está
-            SELECT 1 FROM public.classrooms c
-            JOIN public.classroom_students cs ON cs.classroom_id = c.id
-            WHERE cs.student_id = auth.uid() AND c.teacher_id = profiles.id
-        )
+        public.is_classroom_student(id, auth.uid())
     );
 
--- 4.2. POLICIES: CLASSROOMS
--- Professor pode ver suas salas criadas
-CREATE POLICY "classrooms_teacher_select"
-    ON public.classrooms FOR SELECT
-    USING (teacher_id = auth.uid());
-
--- Professor pode criar salas
-CREATE POLICY "classrooms_teacher_insert"
+CREATE POLICY "classrooms_insert"
     ON public.classrooms FOR INSERT
     WITH CHECK (teacher_id = auth.uid());
 
--- Professor pode atualizar suas salas
-CREATE POLICY "classrooms_teacher_update"
+CREATE POLICY "classrooms_update"
     ON public.classrooms FOR UPDATE
     USING (teacher_id = auth.uid())
     WITH CHECK (teacher_id = auth.uid());
 
--- Professor pode deletar suas salas
-CREATE POLICY "classrooms_teacher_delete"
+CREATE POLICY "classrooms_delete"
     ON public.classrooms FOR DELETE
     USING (teacher_id = auth.uid());
 
--- Aluno pode visualizar apenas as salas nas quais está matriculado
-CREATE POLICY "classrooms_student_select"
-    ON public.classrooms FOR SELECT
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.classroom_students cs
-            WHERE cs.classroom_id = classrooms.id AND cs.student_id = auth.uid()
-        )
-    );
-
 -- 4.3. POLICIES: CLASSROOM_STUDENTS
--- Aluno pode ver suas próprias matrículas
-CREATE POLICY "classroom_students_select_own"
-    ON public.classroom_students FOR SELECT
-    USING (student_id = auth.uid());
-
--- Aluno pode se desmatricular se desejar
-CREATE POLICY "classroom_students_delete_own"
-    ON public.classroom_students FOR DELETE
-    USING (student_id = auth.uid());
-
--- Professor pode visualizar todos os alunos matriculados em suas salas
-CREATE POLICY "classroom_students_teacher_select"
+CREATE POLICY "classroom_students_select"
     ON public.classroom_students FOR SELECT
     USING (
-        EXISTS (
-            SELECT 1 FROM public.classrooms c
-            WHERE c.id = classroom_students.classroom_id AND c.teacher_id = auth.uid()
-        )
+        student_id = auth.uid()
+        OR
+        public.is_classroom_teacher(classroom_id, auth.uid())
     );
 
--- Professor pode remover aluno da sua sala
-CREATE POLICY "classroom_students_teacher_delete"
+CREATE POLICY "classroom_students_insert"
+    ON public.classroom_students FOR INSERT
+    WITH CHECK (
+        student_id = auth.uid()
+        OR
+        public.is_classroom_teacher(classroom_id, auth.uid())
+    );
+
+CREATE POLICY "classroom_students_delete"
     ON public.classroom_students FOR DELETE
     USING (
-        EXISTS (
-            SELECT 1 FROM public.classrooms c
-            WHERE c.id = classroom_students.classroom_id AND c.teacher_id = auth.uid()
-        )
+        student_id = auth.uid()
+        OR
+        public.is_classroom_teacher(classroom_id, auth.uid())
     );
 
 -- 4.4. POLICIES: MATERIALS
