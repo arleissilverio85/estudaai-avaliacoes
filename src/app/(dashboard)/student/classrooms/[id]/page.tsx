@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, School, FileCheck, PlayCircle, Info } from 'lucide-react'
+import { ArrowLeft, School, FileCheck, PlayCircle, Clock, Sparkles } from 'lucide-react'
 import { Classroom, Quiz } from '@/types/database.types'
 
 export const dynamic = 'force-dynamic'
@@ -34,14 +34,21 @@ export default async function StudentClassroomPage({ params }: Props) {
   }
 
   // Buscar avaliações publicadas nesta sala (RLS filtra status = 'published')
-  const { data: quizzesData } = await supabase
-    .from('quizzes')
-    .select('*')
+  const { data: quizzesData } = await (supabase.from('quizzes') as any)
+    .select(`
+      *,
+      attempts:attempts (
+        id,
+        score,
+        status,
+        finished_at
+      )
+    `)
     .eq('classroom_id', id)
     .eq('status', 'published')
     .order('created_at', { ascending: false })
 
-  const quizzes = (quizzesData || []) as Quiz[]
+  const quizzes = (quizzesData || []) as any[]
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -84,7 +91,7 @@ export default async function StudentClassroomPage({ params }: Props) {
             <h2 className="text-lg font-bold text-white">Avaliações Disponíveis</h2>
           </div>
           <span className="text-xs font-semibold text-slate-400">
-            {quizzes.length} avaliações
+            {quizzes.length} {quizzes.length === 1 ? 'avaliação' : 'avaliações'}
           </span>
         </div>
 
@@ -98,37 +105,57 @@ export default async function StudentClassroomPage({ params }: Props) {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {quizzes.map((quiz) => (
-              <div
-                key={quiz.id}
-                className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-md shadow-black/40 backdrop-blur-md transition-all hover:border-indigo-500/50 hover:shadow-lg"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <h4 className="text-base font-bold text-white">{quiz.title}</h4>
-                    <Badge variant="indigo" className="text-[10px]">Disponível</Badge>
+            {quizzes.map((quiz) => {
+              const myAttempt = quiz.attempts?.[0]
+              const hasCompleted = Boolean(myAttempt?.finished_at)
+
+              return (
+                <div
+                  key={quiz.id}
+                  className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-md shadow-black/40 backdrop-blur-md transition-all hover:border-indigo-500/50 hover:shadow-lg"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="text-base font-bold text-white line-clamp-1">{quiz.title}</h4>
+                      {hasCompleted ? (
+                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 shrink-0">
+                          Concluída (Nota: {Number(myAttempt.score).toFixed(1)})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-700 shrink-0">
+                          Disponível
+                        </span>
+                      )}
+                    </div>
+                    {quiz.description && (
+                      <p className="text-xs text-slate-400 line-clamp-2">{quiz.description}</p>
+                    )}
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 pt-1">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                        {quiz.question_count || 'Várias'} questões
+                      </span>
+                      <span>•</span>
+                      <span>Nível Interativo</span>
+                    </div>
                   </div>
-                  {quiz.description && (
-                    <p className="text-xs text-slate-400">{quiz.description}</p>
-                  )}
-                  <p className="text-[11px] text-slate-500">
-                    Tipo: {quiz.question_type}
-                  </p>
-                </div>
 
-                <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                    <Info className="h-3.5 w-3.5" />
-                    Etapa 1: Estrutura Base
-                  </span>
+                  <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-slate-500" />
+                      {new Date(quiz.created_at).toLocaleDateString('pt-BR')}
+                    </span>
 
-                  <Button size="sm" variant="emerald" disabled title="Aplicação de testes será na próxima etapa">
-                    <PlayCircle className="h-4 w-4 mr-1" />
-                    Iniciar Avaliação
-                  </Button>
+                    <Link href={`/student/quizzes/${quiz.id}`}>
+                      <Button size="sm" variant={hasCompleted ? 'secondary' : 'emerald'} className="font-bold shadow-md">
+                        <PlayCircle className="h-4 w-4 mr-1.5" />
+                        {hasCompleted ? 'Refazer / Ver Avaliação' : 'Iniciar Avaliação'}
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

@@ -92,3 +92,132 @@ export async function joinClassroomByCode(
     classroomId: classroom.id,
   }
 }
+
+export type QuizSubmissionResult = {
+  success: boolean
+  error?: string
+  score?: number
+  totalQuestions?: number
+  correctCount?: number
+  results?: {
+    questionId: string
+    questionText: string
+    explanation: string | null
+    selectedOptionId: string
+    correctOptionId: string
+    isCorrect: boolean
+    options: {
+      id: string
+      optionText: string
+      isCorrect: boolean
+    }[]
+  }[]
+}
+
+export async function submitQuizAttempt(
+  quizId: string,
+  selectedAnswers: Record<string, string> // { [questionId]: selectedOptionId }
+): Promise<QuizSubmissionResult> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, error: 'Usuário não autenticado.' }
+  }
+
+  // 1. Buscar as questões e o gabarito oficial desta prova
+  const { data: questionsData, error: qError } = await (supabase.from('questions') as any)
+    .select(`
+      id,
+      question_text,
+      explanation,
+      order_index,
+      question_options (
+        id,
+        option_text,
+        is_correct
+      )
+    `)
+    .eq('quiz_id', quizId)
+    .order('order_index', { ascending: true })
+
+  if (qError || !questionsData || questionsData.length === 0) {
+    return { success: false, error: 'Não foi possível carregar as questões da avaliação.' }
+  }
+
+  // 2. Corrigir as respostas
+  let correctCount = 0
+  const totalQuestions = questionsData.length
+  const questionResults: QuizSubmissionResult['results'] = []
+
+  const answersToInsert: any[] = []
+
+  for (const q of questionsData) {
+    const selectedOptionId = selectedAnswers[q.id] || ''
+    const correctOption = (q.question_options || []).find((opt: any) => opt.is_correct)
+    const isCorrect = correctOption ? correctOption.id === selectedOptionId : false
+
+    if (isCorrect) {
+      correctCount++
+    }
+
+    questionResults.push({
+      questionId: q.id,
+      questionText: q.question_text,
+      explanation: q.explanation,
+      selectedOptionId,
+      correctOptionId: correctOption?.id || '',
+      isCorrect,
+      options: (q.question_options || []).map((opt: any) => ({
+        id: opt.id,
+        optionText: opt.option_text,
+        isCorrect: Boolean(opt.is_correct),
+      })),
+    })
+
+    answersToInsert.push({
+      question_id: q.id,
+      selected_option_id: selectedOptionId || null,
+      is_correct: isCorrect,
+    })
+  }
+
+  const finalScore = Number(((correctCount / totalQuestions) * 10).toFixed(2))
+
+  // 3. Registrar tentativa (attempt) no banco de dados
+  const { data: attemptData, error: attemptError } = await (supabase.from('attempts') as any)
+    .insert({
+      quiz_id: quizId,
+      student_id: user.id,
+      status: 'submitted',
+      score: finalScore,
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single()
+
+  if (attemptData?.id) {
+    // Inserir respostas detalhadas
+    const answersWithAttempt = answersToInsert.map((ans) => ({
+      ...ans,
+      attempt_id: attemptData.id,
+    }))
+
+    await (supabase.from('answers') as any).insert(answersWithAttempt)
+  }
+
+  revalidatePath(`/student/quizzes/${quizId}`)
+  revalidatePath('/student/dashboard')
+
+  return {
+    success: true,
+    score: finalScore,
+    totalQuestions,
+    correctCount,
+    results: questionResults,
+  }
+}
