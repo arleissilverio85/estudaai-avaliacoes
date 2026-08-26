@@ -523,3 +523,60 @@ export async function deleteQuiz(quizId: string): Promise<ActionResponse> {
   revalidatePath('/teacher/quizzes')
   return { success: true, message: 'Avaliação excluída com sucesso.' }
 }
+
+export async function publishQuiz(quizId: string): Promise<ActionResponse> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Não autorizado.' }
+
+  const { data, error } = await (supabase.from('quizzes') as any)
+    .update({
+      status: 'published',
+    })
+    .eq('id', quizId)
+    .eq('teacher_id', user.id)
+    .select('id, classroom_id')
+    .single()
+
+  if (error) {
+    return { error: 'Erro ao publicar avaliação: ' + error.message }
+  }
+
+  revalidatePath('/teacher/quizzes')
+  revalidatePath(`/teacher/quizzes/${quizId}`)
+  if (data?.classroom_id) {
+    revalidatePath(`/teacher/classrooms/${data.classroom_id}`)
+    revalidatePath(`/student/classrooms/${data.classroom_id}`)
+  }
+  return { success: true, message: 'Avaliação publicada! Agora os alunos podem visualizá-la.' }
+}
+
+export async function unpublishQuiz(quizId: string): Promise<ActionResponse> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Não autorizado.' }
+
+  const { data, error } = await (supabase.from('quizzes') as any)
+    .update({
+      status: 'draft',
+    })
+    .eq('id', quizId)
+    .eq('teacher_id', user.id)
+    .select('id, classroom_id')
+    .single()
+
+  if (error) {
+    return { error: 'Erro ao ocultar avaliação: ' + error.message }
+  }
+
+  revalidatePath('/teacher/quizzes')
+  revalidatePath(`/teacher/quizzes/${quizId}`)
+  if (data?.classroom_id) {
+    revalidatePath(`/teacher/classrooms/${data.classroom_id}`)
+    revalidatePath(`/student/classrooms/${data.classroom_id}`)
+  }
+  return { success: true, message: 'Avaliação em rascunho (oculta dos alunos).' }
+}
+

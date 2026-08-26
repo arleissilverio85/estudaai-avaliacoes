@@ -7,6 +7,7 @@ import { formatQuizStatus } from '@/lib/utils'
 import { School, Trash2, Calendar, HelpCircle, Users, ArrowRight, Sparkles } from 'lucide-react'
 import { deleteQuiz } from '@/app/(dashboard)/teacher/actions'
 import { EditQuizDialog } from '@/components/edit-quiz-dialog'
+import { PublishQuizButton } from '@/components/publish-quiz-button'
 import { Quiz } from '@/types/database.types'
 
 interface QuizCardProps {
@@ -72,17 +73,21 @@ export function QuizCard({ quiz, classrooms }: QuizCardProps) {
         </CardContent>
       </div>
 
-      <CardFooter className="flex items-center justify-between pt-3 border-t border-slate-800/80 mt-2">
-        <Link
-          href={`/teacher/quizzes/${quiz.id}`}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-100 hover:bg-indigo-600 hover:text-white transition-all border border-slate-700 shadow-sm"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-          Ver Questões
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+      <CardFooter className="flex flex-col gap-3 pt-3 border-t border-slate-800/80 mt-2">
+        <div className="w-full flex items-center justify-between gap-2">
+          <Link
+            href={`/teacher/quizzes/${quiz.id}`}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-100 hover:bg-indigo-600 hover:text-white transition-all border border-slate-700 shadow-sm"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+            Ver Questões
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
 
-        <div className="flex items-center gap-1">
+          <PublishQuizButton quizId={quiz.id} currentStatus={quiz.status} />
+        </div>
+
+        <div className="w-full flex items-center justify-end gap-1 pt-2 border-t border-slate-800/60">
           <EditQuizDialog quiz={quiz} classrooms={classrooms} />
           <button
             onClick={handleDelete}

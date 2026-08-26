@@ -4,12 +4,15 @@ import Link from 'next/link'
 import { formatQuizStatus } from '@/lib/utils'
 import { EditQuizDialog } from '@/components/edit-quiz-dialog'
 import { QuizReviewClient } from '@/components/quiz-review-client'
+import { PublishQuizButton } from '@/components/publish-quiz-button'
 import {
   ArrowLeft,
   School,
   FileCheck,
   BookOpen,
   Sparkles,
+  Info,
+  CheckCircle2,
 } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -72,6 +75,7 @@ export default async function QuizReviewPage({ params }: Props) {
   }))
 
   const statusInfo = formatQuizStatus(quizData.status)
+  const isPublished = quizData.status === 'published'
   const classroomList = quizData.classrooms ? [{ id: quizData.classrooms.id, name: quizData.classrooms.name }] : []
 
   return (
@@ -85,6 +89,37 @@ export default async function QuizReviewPage({ params }: Props) {
           <ArrowLeft className="h-4 w-4" />
           Voltar para Avaliações
         </Link>
+      </div>
+
+      {/* BANNER DE STATUS DE VISIBILIDADE PARA ALUNOS */}
+      <div
+        className={`rounded-2xl border p-4 flex items-center justify-between gap-4 print:hidden backdrop-blur-md ${
+          isPublished
+            ? 'border-emerald-500/40 bg-emerald-950/40 text-emerald-200'
+            : 'border-amber-500/40 bg-amber-950/40 text-amber-200'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          {isPublished ? (
+            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+          ) : (
+            <Info className="h-5 w-5 text-amber-400 shrink-0" />
+          )}
+          <div>
+            <p className="text-sm font-bold text-white">
+              {isPublished
+                ? 'Prova Publicada! (Os alunos da turma já conseguem visualizá-la)'
+                : 'Prova em Rascunho (Oculta dos alunos até que você decida publicar)'}
+            </p>
+            <p className="text-xs text-slate-300">
+              {isPublished
+                ? 'Todos os alunos matriculados na sala já têm acesso a esta avaliação.'
+                : 'Revise as questões abaixo e clique em "Publicar para a Turma" para liberar o acesso aos alunos.'}
+            </p>
+          </div>
+        </div>
+
+        <PublishQuizButton quizId={quizData.id} currentStatus={quizData.status} />
       </div>
 
       {/* CABEÇALHO DA AVALIAÇÃO */}
