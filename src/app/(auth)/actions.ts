@@ -12,7 +12,7 @@ export type AuthState = {
 }
 
 export async function login(prevState: AuthState | null, formData: FormData): Promise<AuthState> {
-  const email = formData.get('email') as string
+  const email = (formData.get('email') as string)?.trim().toLowerCase()
   const password = formData.get('password') as string
   const redirectTo = formData.get('redirectTo') as string | null
 
@@ -28,6 +28,12 @@ export async function login(prevState: AuthState | null, formData: FormData): Pr
   })
 
   if (error) {
+    if (error.message.includes('Invalid login credentials')) {
+      return { error: 'E-mail ou senha incorretos.' }
+    }
+    if (error.message.includes('Email not confirmed')) {
+      return { error: 'Por favor, confirme seu e-mail através do link enviado antes de entrar.' }
+    }
     return { error: error.message || 'Erro ao realizar login. Verifique suas credenciais.' }
   }
 
@@ -54,8 +60,8 @@ export async function login(prevState: AuthState | null, formData: FormData): Pr
 }
 
 export async function register(prevState: AuthState | null, formData: FormData): Promise<AuthState> {
-  const name = formData.get('name') as string
-  const email = formData.get('email') as string
+  const name = (formData.get('name') as string)?.trim()
+  const email = (formData.get('email') as string)?.trim().toLowerCase()
   const password = formData.get('password') as string
   const role = (formData.get('role') as UserRole) || 'student'
 
@@ -81,19 +87,24 @@ export async function register(prevState: AuthState | null, formData: FormData):
   })
 
   if (error) {
+    if (error.message.includes('User already registered')) {
+      return { error: 'Este e-mail já está cadastrado. Faça login ou utilize outro e-mail.' }
+    }
     return { error: error.message || 'Erro ao criar conta. Tente novamente.' }
   }
 
   if (data?.user) {
-    await supabase.from('profiles').upsert({
-      id: data.user.id,
-      name,
-      email,
-      role,
-    } as any)
-
-    revalidatePath('/', 'layout')
-    redirect(role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard')
+    // Se o Supabase já iniciou sessão ativa imediatamente (confirmação de email desligada)
+    if (data.session) {
+      revalidatePath('/', 'layout')
+      redirect(role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard')
+    } else {
+      // Se o Supabase requer confirmação por e-mail
+      return {
+        success: true,
+        message: 'Cadastro realizado com sucesso! Se a confirmação de e-mail estiver ativa, verifique sua caixa de entrada para ativar a conta antes de fazer login.',
+      }
+    }
   }
 
   return { success: true, message: 'Cadastro realizado com sucesso!' }

@@ -199,29 +199,49 @@ CREATE TRIGGER tr_quizzes_updated_at
 
 -- 3.2. Função Trigger: Criação automática de profile ao registrar em auth.users
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql 
+SECURITY DEFINER 
+SET search_path = public, auth, pg_temp
+AS $$
 DECLARE
-    v_role user_role := 'student';
+    v_role public.user_role := 'student'::public.user_role;
     v_name TEXT;
+    v_email TEXT;
 BEGIN
-    -- Obter role dos metadados se existir
+    -- Determinar role
     IF (NEW.raw_user_meta_data->>'role') = 'teacher' THEN
-        v_role := 'teacher';
+        v_role := 'teacher'::public.user_role;
+    ELSE
+        v_role := 'student'::public.user_role;
     END IF;
 
-    -- Obter nome dos metadados
-    v_name := COALESCE(NEW.raw_user_meta_data->>'name', NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1));
+    -- Determinar email
+    v_email := COALESCE(NEW.email, '');
 
-    INSERT INTO public.profiles (id, name, email, role)
-    VALUES (NEW.id, v_name, NEW.email, v_role)
-    ON CONFLICT (id) DO UPDATE
-    SET name = EXCLUDED.name,
-        email = EXCLUDED.email,
-        updated_at = timezone('utc'::text, now());
+    -- Determinar nome
+    v_name := COALESCE(
+        NEW.raw_user_meta_data->>'name',
+        NEW.raw_user_meta_data->>'full_name',
+        CASE WHEN v_email <> '' THEN split_part(v_email, '@', 1) ELSE 'Usuário' END
+    );
+
+    -- Inserir perfil de forma resiliente
+    BEGIN
+        INSERT INTO public.profiles (id, name, email, role)
+        VALUES (NEW.id, v_name, v_email, v_role)
+        ON CONFLICT (id) DO UPDATE
+        SET name = EXCLUDED.name,
+            email = EXCLUDED.email,
+            role = EXCLUDED.role,
+            updated_at = timezone('utc'::text, now());
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'Erro ao criar perfil para usuário %: %', NEW.id, SQLERRM;
+    END;
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
