@@ -16,33 +16,37 @@ export default function RegisterPage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-col justify-center bg-gradient-to-b from-slate-50 to-slate-100 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+    <div className="flex min-h-screen flex-col justify-center bg-[#090d16] px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* GLOW DECORATIONS */}
+      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-[500px] rounded-full bg-indigo-600/15 blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-40 left-10 h-80 w-80 rounded-full bg-emerald-600/10 blur-[100px]" />
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <Link href="/" className="flex items-center justify-center gap-2.5 group">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-200 transition-transform group-hover:scale-105">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border border-indigo-500/40 transition-transform group-hover:scale-105">
             <GraduationCap className="h-7 w-7" />
           </div>
-          <span className="text-2xl font-black tracking-tight text-slate-900">
-            Estuda<span className="text-indigo-600">Aí</span>
+          <span className="text-2xl font-black tracking-tight text-white">
+            Estuda<span className="text-indigo-400">Aí</span>
           </span>
         </Link>
-        <h2 className="mt-6 text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+        <h2 className="mt-6 text-center text-2xl font-bold tracking-tight text-white sm:text-3xl">
           Crie sua conta
         </h2>
-        <p className="mt-2 text-center text-sm text-slate-600">
+        <p className="mt-2 text-center text-sm text-slate-400">
           Selecione seu perfil e comece a utilizar o EstudaAí
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-200/50 sm:p-8">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-black/60 backdrop-blur-xl sm:p-8">
           {state?.success && state.message ? (
             <div className="space-y-4 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 shadow-lg">
                 <CheckCircle2 className="h-8 w-8" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Cadastro Concluído!</h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
+              <h3 className="text-lg font-bold text-white">Cadastro Concluído!</h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
                 {state.message}
               </p>
               <div className="pt-4">
@@ -57,14 +61,14 @@ export default function RegisterPage() {
           ) : (
             <form action={formAction} className="space-y-4">
               {state?.error && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-700">
+                <div className="rounded-xl border border-rose-800/60 bg-rose-950/60 p-3.5 text-sm text-rose-300">
                   <p className="font-medium">{state.error}</p>
                 </div>
               )}
 
               {/* SELEÇÃO DO TIPO DE CONTA */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Eu sou
                 </label>
                 <div className="grid grid-cols-2 gap-3">
@@ -73,13 +77,13 @@ export default function RegisterPage() {
                     onClick={() => setRole('student')}
                     className={`flex flex-col items-center justify-center rounded-2xl border-2 p-3 text-center transition-all ${
                       role === 'student'
-                        ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 ring-2 ring-indigo-600/20'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        ? 'border-indigo-500 bg-indigo-950/60 text-white shadow-md shadow-indigo-600/20'
+                        : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                     }`}
                   >
-                    <UserCheck className={`h-6 w-6 mb-1 ${role === 'student' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <UserCheck className={`h-6 w-6 mb-1 ${role === 'student' ? 'text-indigo-400' : 'text-slate-500'}`} />
                     <span className="text-sm font-bold">Aluno</span>
-                    <span className="text-[11px] text-slate-500">Realizar avaliações</span>
+                    <span className="text-[11px] text-slate-400">Realizar avaliações</span>
                   </button>
 
                   <button
@@ -87,13 +91,13 @@ export default function RegisterPage() {
                     onClick={() => setRole('teacher')}
                     className={`flex flex-col items-center justify-center rounded-2xl border-2 p-3 text-center transition-all ${
                       role === 'teacher'
-                        ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 ring-2 ring-indigo-600/20'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        ? 'border-indigo-500 bg-indigo-950/60 text-white shadow-md shadow-indigo-600/20'
+                        : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                     }`}
                   >
-                    <School className={`h-6 w-6 mb-1 ${role === 'teacher' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <School className={`h-6 w-6 mb-1 ${role === 'teacher' ? 'text-indigo-400' : 'text-slate-500'}`} />
                     <span className="text-sm font-bold">Professor</span>
-                    <span className="text-[11px] text-slate-500">Criar salas e provas</span>
+                    <span className="text-[11px] text-slate-400">Criar salas e provas</span>
                   </button>
                 </div>
                 <input type="hidden" name="role" value={role} />
@@ -148,12 +152,12 @@ export default function RegisterPage() {
           )}
 
           {!state?.success && (
-            <div className="mt-6 border-t border-slate-100 pt-6 text-center">
-              <p className="text-sm text-slate-600">
+            <div className="mt-6 border-t border-slate-800 pt-6 text-center">
+              <p className="text-sm text-slate-400">
                 Já tem uma conta?{' '}
                 <Link
                   href="/login"
-                  className="inline-flex items-center font-semibold text-indigo-600 hover:text-indigo-500 hover:underline"
+                  className="inline-flex items-center font-semibold text-indigo-400 hover:text-indigo-300 hover:underline"
                 >
                   Faça login
                   <ArrowRight className="ml-1 h-3.5 w-3.5" />

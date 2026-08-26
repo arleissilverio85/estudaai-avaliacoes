@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { ClassroomCard } from '@/components/classroom-card'
 import { JoinClassroomDialog } from '@/components/join-classroom-dialog'
-import { School, BookOpen, KeyRound, CheckCircle2 } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,12 +50,12 @@ export default async function StudentDashboardPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* HEADER DO DASHBOARD */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/80 pb-6">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
             Área do Aluno
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-400">
             Acesse suas salas de aula e realize suas avaliações.
           </p>
         </div>
@@ -67,19 +67,19 @@ export default async function StudentDashboardPage() {
       {/* LISTA DE SALAS MATRICULADAS */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">Salas Matriculadas</h2>
-          <span className="text-xs font-semibold text-slate-500">
+          <h2 className="text-lg font-bold text-white">Salas Matriculadas</h2>
+          <span className="text-xs font-semibold text-slate-400">
             {classrooms.length} {classrooms.length === 1 ? 'sala' : 'salas'}
           </span>
         </div>
 
         {classrooms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-50 text-indigo-600">
+          <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-12 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
               <KeyRound className="h-8 w-8" />
             </div>
-            <h3 className="mt-4 text-base font-bold text-slate-900">Você ainda não entrou em nenhuma sala</h3>
-            <p className="mt-1 max-w-sm text-sm text-slate-500">
+            <h3 className="mt-4 text-base font-bold text-white">Você ainda não entrou em nenhuma sala</h3>
+            <p className="mt-1 max-w-sm text-sm text-slate-400">
               Peça o código de acesso (ex: DIR4821) ao seu professor para ingressar na turma.
             </p>
             <div className="mt-6">

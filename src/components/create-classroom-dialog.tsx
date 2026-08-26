@@ -25,28 +25,28 @@ export function CreateClassroomDialog() {
         onClick={() => setIsOpen(true)}
         variant="primary"
         size="md"
-        className="font-semibold shadow-md"
+        className="font-semibold shadow-lg shadow-indigo-600/30"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-4 w-4 mr-1" />
         Nova Sala de Aula
       </Button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 sm:p-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                   <School className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Criar Nova Sala</h3>
-                  <p className="text-xs text-slate-500">Gere um código de acesso para seus alunos</p>
+                  <h3 className="text-lg font-bold text-white">Criar Nova Sala</h3>
+                  <p className="text-xs text-slate-400">Gere um código de acesso para seus alunos</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
-                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white border border-transparent hover:border-slate-700"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -54,7 +54,7 @@ export function CreateClassroomDialog() {
 
             <form action={formAction} className="mt-6 space-y-4">
               {state?.error && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+                <div className="rounded-xl border border-rose-800/60 bg-rose-950/60 p-3 text-xs font-semibold text-rose-300">
                   {state.error}
                 </div>
               )}
@@ -85,7 +85,7 @@ export function CreateClassroomDialog() {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <Button
                   type="button"
                   variant="outline"
@@ -101,7 +101,7 @@ export function CreateClassroomDialog() {
                   size="md"
                   isLoading={isPending}
                 >
-                  <Sparkles className="h-4 w-4" />
+                  <Sparkles className="h-4 w-4 mr-1" />
                   Criar Sala
                 </Button>
               </div>
