@@ -6,12 +6,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Gera um código de sala amigável no formato 3 letras maiúsculas + 4 números (ex: MAT4821, DIR3029)
+ * Gera um código de sala amigável no formato 3 ou 4 letras maiúsculas + 4 números (ex: MAT4821, DIR3029, SALA5912)
  */
 export function generateJoinCode(prefix: string = "EST"): string {
-  const cleanPrefix = prefix.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || "EST"
+  const cleanPrefix = prefix.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || "EST"
   const numbers = Math.floor(1000 + Math.random() * 9000).toString()
-  return `${cleanPrefix}${numbers}`
+  return `${cleanPrefix}${numbers}`.slice(0, 10)
 }
 
 export function formatRole(role: string): string {
