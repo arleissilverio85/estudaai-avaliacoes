@@ -1,8 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { generateJoinCode } from '@/lib/utils'
+import { extractTextFromFile } from '@/lib/parsers/extract-text'
+import { generateQuizWithGPT4oMini } from '@/lib/ai/quiz-generator'
 import { QuizQuestionType, QuizStatus, MaterialProcessingStatus } from '@/types/database.types'
 
 export type ActionResponse = {
@@ -113,8 +116,79 @@ export async function deleteClassroom(classroomId: string): Promise<ActionRespon
 }
 
 /* ==============================================================================
- * 2. MATERIAIS (MATERIALS) - CRUD
+ * 2. MATERIAIS (MATERIALS) - UPLOAD REAL MULTIFORMATO & CRUD
  * ============================================================================== */
+
+export async function uploadAndProcessMaterial(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const title = formData.get('title') as string
+  const description = formData.get('description') as string | null
+  const file = formData.get('file') as File | null
+
+  if (!title || title.trim().length === 0) {
+    return { error: 'O título do material é obrigatório.' }
+  }
+
+  if (!file || file.size === 0) {
+    return { error: 'Selecione um arquivo válido (PDF, Word, Slides, Planilha ou TXT).' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Não autenticado.' }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storagePath = `${user.id}/${Date.now()}_${sanitizedFileName}`
+
+    // 1. Upload para o Supabase Storage (bucket materials)
+    const { error: storageError } = await supabase.storage
+      .from('materials')
+      .upload(storagePath, buffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: true,
+      })
+
+    if (storageError) {
+      console.warn('Aviso de storage:', storageError.message)
+    }
+
+    // 2. Extração de texto usando os parsers multiformato
+    const extractedText = await extractTextFromFile(buffer, file.name, file.type)
+
+    // 3. Persistência na tabela materials com o texto extraído
+    const { data: materialData, error: dbError } = await (supabase.from('materials') as any)
+      .insert({
+        teacher_id: user.id,
+        title: title.trim(),
+        description: description?.trim() || null,
+        file_name: file.name,
+        file_type: file.type || 'application/octet-stream',
+        file_size: file.size,
+        file_path: storagePath,
+        content_text: extractedText,
+        processing_status: 'ready' as MaterialProcessingStatus,
+      })
+      .select()
+      .single()
+
+    if (dbError) {
+      return { error: 'Erro ao salvar material no banco de dados: ' + dbError.message }
+    }
+
+    revalidatePath('/teacher/materials')
+    return {
+      success: true,
+      message: `Material "${title}" enviado e processado com sucesso! Conteúdo pronto para gerar avaliações por IA.`,
+      data: materialData,
+    }
+  } catch (err: any) {
+    console.error('Erro no upload de material:', err)
+    return { error: 'Falha no processamento do arquivo: ' + err.message }
+  }
+}
 
 export async function createMaterial(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const title = formData.get('title') as string
@@ -150,6 +224,23 @@ export async function createMaterial(prevState: ActionResponse | null, formData:
 
   revalidatePath('/teacher/materials')
   return { success: true, message: 'Material registrado com sucesso!', data }
+}
+
+export async function getMaterialDownloadUrl(filePath: string): Promise<{ url?: string; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Não autenticado.' }
+
+  const { data, error } = await supabase.storage
+    .from('materials')
+    .createSignedUrl(filePath, 3600) // 1 hora de validade
+
+  if (error || !data?.signedUrl) {
+    return { error: error?.message || 'Arquivo não encontrado no armazenamento.' }
+  }
+
+  return { url: data.signedUrl }
 }
 
 export async function updateMaterial(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
@@ -194,6 +285,17 @@ export async function deleteMaterial(materialId: string): Promise<ActionResponse
 
   if (!user) return { error: 'Não autorizado.' }
 
+  // Buscar file_path para remover também do storage se existir
+  const { data: material } = await (supabase.from('materials') as any)
+    .select('file_path')
+    .eq('id', materialId)
+    .eq('teacher_id', user.id)
+    .single()
+
+  if (material?.file_path) {
+    await supabase.storage.from('materials').remove([material.file_path])
+  }
+
   const { error } = await (supabase.from('materials') as any)
     .delete()
     .eq('id', materialId)
@@ -208,8 +310,123 @@ export async function deleteMaterial(materialId: string): Promise<ActionResponse
 }
 
 /* ==============================================================================
- * 3. AVALIAÇÕES (QUIZZES) - CRUD E HISTÓRICO
+ * 3. AVALIAÇÕES (QUIZZES) & GERAÇÃO POR IA (GPT-4o-mini)
  * ============================================================================== */
+
+export async function generateQuizWithAI(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const classroom_id = formData.get('classroom_id') as string
+  const material_id = formData.get('material_id') as string
+  const title = formData.get('title') as string
+  const description = formData.get('description') as string | null
+  const question_type = (formData.get('question_type') as 'multiple_choice' | 'true_false' | 'mixed') || 'multiple_choice'
+  const questionCount = parseInt(formData.get('question_count') as string, 10) || 5
+  const difficulty = (formData.get('difficulty') as 'easy' | 'medium' | 'hard') || 'medium'
+  const initial_status = (formData.get('status') as QuizStatus) || 'draft'
+
+  if (!classroom_id || !material_id) {
+    return { error: 'Selecione a Sala de Aula e o Material Didático base para a IA.' }
+  }
+
+  if (questionCount < 5 || questionCount > 15) {
+    return { error: 'A quantidade de questões deve ser entre 5 e 15.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Não autenticado.' }
+
+  // 1. Buscar conteúdo do material
+  const { data: material, error: matError } = await (supabase.from('materials') as any)
+    .select('id, title, content_text')
+    .eq('id', material_id)
+    .eq('teacher_id', user.id)
+    .single()
+
+  if (matError || !material) {
+    return { error: 'Material didático não encontrado.' }
+  }
+
+  if (!material.content_text || material.content_text.trim().length < 20) {
+    return { error: 'O material selecionado não possui conteúdo textual suficiente extraído para alimentar a IA.' }
+  }
+
+  try {
+    // 2. Chamar o gerador GPT-4o-mini com o material exclusivo
+    const aiResult = await generateQuizWithGPT4oMini({
+      materialTitle: material.title,
+      materialContent: material.content_text,
+      questionType: question_type,
+      questionCount,
+      difficulty,
+    })
+
+    const finalTitle = title && title.trim().length > 0 ? title.trim() : aiResult.title
+
+    // 3. Inserir registro do Quiz
+    const { data: quiz, error: quizError } = await (supabase.from('quizzes') as any)
+      .insert({
+        teacher_id: user.id,
+        classroom_id,
+        material_id: material.id,
+        title: finalTitle,
+        description: description?.trim() || aiResult.summary || `Avaliação gerada por IA (${difficulty.toUpperCase()}) com ${aiResult.questions.length} questões.`,
+        question_type: question_type as QuizQuestionType,
+        question_count: aiResult.questions.length,
+        status: initial_status,
+      })
+      .select()
+      .single()
+
+    if (quizError || !quiz) {
+      return { error: 'Erro ao criar avaliação: ' + quizError?.message }
+    }
+
+    // 4. Inserir todas as questões e opções geradas
+    for (let i = 0; i < aiResult.questions.length; i++) {
+      const q = aiResult.questions[i]
+      const { data: questionData, error: qErr } = await (supabase.from('questions') as any)
+        .insert({
+          quiz_id: quiz.id,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          order_index: i + 1,
+          explanation: q.explanation || null,
+        })
+        .select()
+        .single()
+
+      if (qErr || !questionData) {
+        console.error('Erro ao inserir questão:', qErr)
+        continue
+      }
+
+      // Inserir alternativas
+      const optionsToInsert = q.options.map((opt, optIdx) => ({
+        question_id: questionData.id,
+        option_text: opt.option_text,
+        is_correct: opt.is_correct,
+        order_index: optIdx + 1,
+      }))
+
+      if (optionsToInsert.length > 0) {
+        await (supabase.from('question_options') as any).insert(optionsToInsert)
+      }
+    }
+
+    revalidatePath('/teacher/quizzes')
+    revalidatePath(`/teacher/classrooms/${classroom_id}`)
+    
+    return {
+      success: true,
+      message: `Avaliação com ${aiResult.questions.length} questões gerada com sucesso pela IA!`,
+      data: { quizId: quiz.id },
+    }
+  } catch (err: any) {
+    console.error('Erro ao gerar quiz com IA:', err)
+    return { error: 'Erro na geração por IA (GPT-4o-mini): ' + err.message }
+  }
+}
 
 export async function createQuizDraft(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const classroom_id = formData.get('classroom_id') as string

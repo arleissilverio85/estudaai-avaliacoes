@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { BookOpen, Info } from 'lucide-react'
-import { CreateMaterialForm } from '@/components/create-material-form'
+import { BookOpen, Sparkles } from 'lucide-react'
+import { UploadMaterialDialog } from '@/components/upload-material-dialog'
 import { MaterialCard } from '@/components/material-card'
 import { Material } from '@/types/database.types'
 
@@ -13,8 +13,7 @@ export default async function MaterialsPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: materialsData } = await supabase
-    .from('materials')
+  const { data: materialsData } = await (supabase.from('materials') as any)
     .select('*')
     .eq('teacher_id', user?.id || '')
     .order('created_at', { ascending: false })
@@ -30,42 +29,46 @@ export default async function MaterialsPage() {
             Materiais de Estudo
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Gerencie, edite ou remova materiais estruturados para suas turmas.
+            Envie PDFs, apresentações de slides, documentos Word ou planilhas para gerar avaliações automáticas por IA.
           </p>
+        </div>
+        <div>
+          <UploadMaterialDialog />
         </div>
       </div>
 
-      {/* AVISO INFORMATIVO DA ETAPA 1 */}
+      {/* AVISO DE FUNCIONALIDADE ATIVA */}
       <div className="rounded-2xl border border-indigo-500/30 bg-indigo-950/40 p-4 text-indigo-200 flex items-start gap-3 backdrop-blur-md">
-        <Info className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600/30 text-indigo-300 shrink-0 mt-0.5 border border-indigo-500/30">
+          <Sparkles className="h-4 w-4" />
+        </div>
         <div className="text-xs space-y-1">
-          <p className="font-bold text-white">Fundação Estrutural (Etapa 1)</p>
+          <p className="font-bold text-white">Base de Conhecimento para a IA</p>
           <p className="text-indigo-300/80 leading-relaxed">
-            Nesta etapa, o CRUD de materiais permite criar, editar e excluir registros vinculados ao professor.
-            Os status (<span className="font-mono font-semibold text-indigo-300">pending</span>, <span className="font-mono font-semibold text-indigo-300">processing</span>, <span className="font-mono font-semibold text-indigo-300">ready</span>, <span className="font-mono font-semibold text-indigo-300">error</span>) estão preparados para o futuro módulo de RAG/upload.
+            Ao enviar um arquivo pelo celular ou computador, o sistema extrai e indexa seu conteúdo automaticamente. Em seguida, na aba <strong>Avaliações</strong>, a IA (GPT-4o-mini) consultará estritamente estes materiais para formular questões com gabarito e justificativa.
           </p>
         </div>
       </div>
-
-      {/* FORMULÁRIO DE CADASTRO ESTRUTURAL */}
-      <CreateMaterialForm />
 
       {/* LISTAGEM DE MATERIAIS */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Materiais Cadastrados</h2>
+          <h2 className="text-lg font-bold text-white">Seus Materiais</h2>
           <span className="text-xs font-semibold text-slate-400">
-            {materials.length} {materials.length === 1 ? 'material' : 'materiais'}
+            {materials.length} {materials.length === 1 ? 'material cadastrado' : 'materiais cadastrados'}
           </span>
         </div>
 
         {materials.length === 0 ? (
           <div className="rounded-3xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-12 text-center">
             <BookOpen className="mx-auto h-12 w-12 text-slate-600" />
-            <h3 className="mt-3 text-base font-bold text-white">Nenhum material registrado</h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Cadastre um item acima para testar a persistência e edição na tabela <span className="font-mono text-indigo-400">materials</span>.
+            <h3 className="mt-3 text-base font-bold text-white">Nenhum material enviado ainda</h3>
+            <p className="mt-1 max-w-sm mx-auto text-xs text-slate-400">
+              Envie um arquivo PDF, Word, Slide ou TXT para alimentar o gerador inteligente de avaliações.
             </p>
+            <div className="mt-6">
+              <UploadMaterialDialog />
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

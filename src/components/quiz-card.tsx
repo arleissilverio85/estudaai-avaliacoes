@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { formatQuizStatus } from '@/lib/utils'
-import { School, Trash2, Calendar, HelpCircle, Users } from 'lucide-react'
+import { School, Trash2, Calendar, HelpCircle, Users, ArrowRight, Sparkles } from 'lucide-react'
 import { deleteQuiz } from '@/app/(dashboard)/teacher/actions'
 import { EditQuizDialog } from '@/components/edit-quiz-dialog'
 import { Quiz } from '@/types/database.types'
@@ -30,11 +31,13 @@ export function QuizCard({ quiz, classrooms }: QuizCardProps) {
   }
 
   return (
-    <Card className="flex flex-col justify-between border-slate-800 bg-slate-900/80 transition-all hover:border-slate-700 hover:shadow-lg">
+    <Card className="group flex flex-col justify-between border-slate-800 bg-slate-900/80 transition-all duration-200 hover:-translate-y-1 hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/10">
       <div>
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2">
-            <CardTitle className="text-base font-bold text-white line-clamp-1">{quiz.title}</CardTitle>
+            <CardTitle className="text-base font-bold text-white line-clamp-1 group-hover:text-indigo-300 transition-colors">
+              {quiz.title}
+            </CardTitle>
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border shrink-0 ${statusInfo.color}`}>
               {statusInfo.label}
             </span>
@@ -69,16 +72,27 @@ export function QuizCard({ quiz, classrooms }: QuizCardProps) {
         </CardContent>
       </div>
 
-      <CardFooter className="flex items-center justify-end gap-1 pt-3 border-t border-slate-800/80 mt-2">
-        <EditQuizDialog quiz={quiz} classrooms={classrooms} />
-        <button
-          onClick={handleDelete}
-          disabled={isDeleting}
-          className="rounded-lg p-2 text-slate-500 hover:bg-rose-950/50 hover:text-rose-400 transition-colors border border-transparent hover:border-rose-900/50"
-          title="Excluir Avaliação"
+      <CardFooter className="flex items-center justify-between pt-3 border-t border-slate-800/80 mt-2">
+        <Link
+          href={`/teacher/quizzes/${quiz.id}`}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-100 hover:bg-indigo-600 hover:text-white transition-all border border-slate-700 shadow-sm"
         >
-          <Trash2 className="h-4 w-4" />
-        </button>
+          <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+          Ver Questões
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+
+        <div className="flex items-center gap-1">
+          <EditQuizDialog quiz={quiz} classrooms={classrooms} />
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="rounded-lg p-2 text-slate-500 hover:bg-rose-950/50 hover:text-rose-400 transition-colors border border-transparent hover:border-rose-900/50"
+            title="Excluir Avaliação"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </CardFooter>
     </Card>
   )

@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import { FileCheck } from 'lucide-react'
+import { FileCheck, Sparkles } from 'lucide-react'
 import { CreateQuizForm } from '@/components/create-quiz-form'
 import { QuizCard } from '@/components/quiz-card'
+import { GenerateQuizAiDialog } from '@/components/generate-quiz-ai-dialog'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,9 +18,8 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Buscar todas as salas do professor para o dropdown
-  const { data: classroomsData } = await supabase
-    .from('classrooms')
+  // 1. Buscar todas as salas do professor
+  const { data: classroomsData } = await (supabase.from('classrooms') as any)
     .select('id, name')
     .eq('teacher_id', user?.id || '')
     .order('name', { ascending: true })
@@ -29,9 +29,20 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
     name: c.name as string,
   }))
 
-  // Buscar avaliações com histórico de tentativas vinculadas
-  const { data: quizzesData } = await supabase
-    .from('quizzes')
+  // 2. Buscar materiais do professor
+  const { data: materialsData } = await (supabase.from('materials') as any)
+    .select('id, title, file_name')
+    .eq('teacher_id', user?.id || '')
+    .order('title', { ascending: true })
+
+  const materials = (materialsData || []).map((m: any) => ({
+    id: m.id as string,
+    title: m.title as string,
+    file_name: m.file_name as string | null,
+  }))
+
+  // 3. Buscar avaliações com histórico de tentativas
+  const { data: quizzesData } = await (supabase.from('quizzes') as any)
     .select(`
       *,
       classrooms:classroom_id (
@@ -53,12 +64,32 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
             Avaliações e Provas
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Crie, publique, edite, exclua e visualize o histórico de avaliações geradas.
+            Gere avaliações com IA baseadas em seus materiais didáticos ou crie manualmente.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <GenerateQuizAiDialog
+            classrooms={classrooms}
+            materials={materials}
+            initialClassroomId={classroom_id}
+          />
+        </div>
+      </div>
+
+      {/* AVISO DO GERADOR INTELIGENTE */}
+      <div className="rounded-2xl border border-indigo-500/30 bg-indigo-950/40 p-4 text-indigo-200 flex items-start gap-3 backdrop-blur-md">
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600/30 text-indigo-300 shrink-0 mt-0.5 border border-indigo-500/30">
+          <Sparkles className="h-4 w-4" />
+        </div>
+        <div className="text-xs space-y-1">
+          <p className="font-bold text-white">Geração de Questões com GPT-4o-mini</p>
+          <p className="text-indigo-300/80 leading-relaxed">
+            Clique no botão <strong>Gerar Prova com IA</strong> acima para criar entre 5 e 15 questões (Múltipla Escolha ou Verdadeiro/Falso) com gabarito e justificativa pedagógica, utilizando exclusivamente o material que você enviou.
           </p>
         </div>
       </div>
 
-      {/* FORMULÁRIO DE CRIAÇÃO DE QUIZ */}
+      {/* FORMULÁRIO MANUAL OU ALTERNATIVO */}
       <CreateQuizForm classrooms={classrooms} initialClassroomId={classroom_id} />
 
       {/* LISTA DE AVALIAÇÕES */}
@@ -75,7 +106,7 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
             <FileCheck className="mx-auto h-12 w-12 text-slate-600" />
             <h3 className="mt-3 text-base font-bold text-white">Nenhuma avaliação cadastrada</h3>
             <p className="mt-1 text-xs text-slate-400">
-              Crie uma avaliação acima para testar a associação com salas de aula e status RLS.
+              Gere uma avaliação com IA acima ou crie um rascunho manual.
             </p>
           </div>
         ) : (

@@ -47,6 +47,8 @@ export type Material = {
   file_name: string | null
   file_type: string | null
   file_path: string | null
+  file_size?: number | null
+  content_text?: string | null
   processing_status: MaterialProcessingStatus
   created_at: string
   updated_at: string
