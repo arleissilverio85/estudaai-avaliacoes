@@ -58,6 +58,8 @@ export async function createClassroom(prevState: ActionResponse | null, formData
   }
 
   revalidatePath('/teacher/dashboard')
+  revalidatePath('/teacher/materials')
+  revalidatePath('/teacher/quizzes')
   return { success: true, message: `Sala "${name}" criada com sucesso! Código: ${join_code}`, data }
 }
 
@@ -92,6 +94,8 @@ export async function updateClassroom(prevState: ActionResponse | null, formData
   }
 
   revalidatePath('/teacher/dashboard')
+  revalidatePath('/teacher/materials')
+  revalidatePath('/teacher/quizzes')
   revalidatePath(`/teacher/classrooms/${classroomId}`)
   return { success: true, message: 'Sala atualizada com sucesso!', data }
 }
@@ -112,6 +116,8 @@ export async function deleteClassroom(classroomId: string): Promise<ActionRespon
   }
 
   revalidatePath('/teacher/dashboard')
+  revalidatePath('/teacher/materials')
+  revalidatePath('/teacher/quizzes')
   return { success: true, message: 'Sala removida com sucesso.' }
 }
 

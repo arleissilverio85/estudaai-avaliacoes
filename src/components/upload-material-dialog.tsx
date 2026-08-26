@@ -24,7 +24,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
     { success: undefined, error: undefined }
   )
 
-  // Carregar salas dinamicamente do Supabase para garantir que sempre esteja atualizado
+  // Sempre sincronizar a lista de salas quando o modal é aberto
   useEffect(() => {
     if (isOpen) {
       const supabase = createClient()
@@ -33,12 +33,15 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
         .select('id, name')
         .order('name', { ascending: true })
         .then(({ data }) => {
-          if (data && (data as any[]).length > 0) {
-            const typedList = data as { id: string; name: string }[]
-            setClassList(typedList)
-            if (!selectedClassroom && !initialClassroomId) {
-              setSelectedClassroom(typedList[0].id)
+          const list = (data as { id: string; name: string }[]) || []
+          setClassList(list)
+          if (list.length > 0) {
+            // Se não tem sala selecionada ou a que estava selecionada foi apagada
+            if (!selectedClassroom || !list.some((c) => c.id === selectedClassroom)) {
+              setSelectedClassroom(initialClassroomId && list.some((c) => c.id === initialClassroomId) ? initialClassroomId : list[0].id)
             }
+          } else {
+            setSelectedClassroom('')
           }
         })
     }
@@ -121,7 +124,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                 {classList.length === 0 ? (
                   <div className="rounded-xl border border-amber-800/50 bg-amber-950/40 p-3 text-xs text-amber-300 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>Nenhuma sala de aula encontrada. Crie uma sala primeiro na aba &quot;Salas de Aula&quot;.</span>
+                    <span>Nenhuma sala de aula ativa encontrada. Crie uma sala primeiro na aba &quot;Salas de Aula&quot;.</span>
                   </div>
                 ) : (
                   <select
@@ -131,7 +134,6 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                     required
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
                   >
-                    <option value="">-- Selecione a Sala de Aula --</option>
                     {classList.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -220,7 +222,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                   variant="primary"
                   size="md"
                   isLoading={isPending}
-                  disabled={!selectedFile}
+                  disabled={!selectedFile || classList.length === 0}
                 >
                   <Sparkles className="h-4 w-4 mr-1" />
                   Enviar e Extrair Conteúdo
