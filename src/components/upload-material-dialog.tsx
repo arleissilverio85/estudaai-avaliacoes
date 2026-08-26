@@ -2,9 +2,10 @@
 
 import { useState, useActionState, useEffect, useRef } from 'react'
 import { uploadAndProcessMaterial, ActionResponse } from '@/app/(dashboard)/teacher/actions'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { UploadCloud, FileText, X, Sparkles, FileSpreadsheet, FileCode, Presentation, School } from 'lucide-react'
+import { UploadCloud, FileText, X, Sparkles, FileSpreadsheet, FileCode, Presentation, School, AlertCircle } from 'lucide-react'
 
 interface UploadMaterialDialogProps {
   classrooms?: { id: string; name: string }[]
@@ -13,14 +14,35 @@ interface UploadMaterialDialogProps {
 
 export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: UploadMaterialDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [classList, setClassList] = useState<{ id: string; name: string }[]>(classrooms)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [selectedClassroom, setSelectedClassroom] = useState<string>(initialClassroomId || classrooms[0]?.id || '')
+  const [selectedClassroom, setSelectedClassroom] = useState<string>(initialClassroomId || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [state, formAction, isPending] = useActionState<ActionResponse, FormData>(
     uploadAndProcessMaterial,
     { success: undefined, error: undefined }
   )
+
+  // Carregar salas dinamicamente do Supabase para garantir que sempre esteja atualizado
+  useEffect(() => {
+    if (isOpen) {
+      const supabase = createClient()
+      supabase
+        .from('classrooms')
+        .select('id, name')
+        .order('name', { ascending: true })
+        .then(({ data }) => {
+          if (data && (data as any[]).length > 0) {
+            const typedList = data as { id: string; name: string }[]
+            setClassList(typedList)
+            if (!selectedClassroom && !initialClassroomId) {
+              setSelectedClassroom(typedList[0].id)
+            }
+          }
+        })
+    }
+  }, [isOpen, initialClassroomId, selectedClassroom])
 
   useEffect(() => {
     if (state?.success) {
@@ -63,7 +85,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left">
+          <div className="w-full max-w-lg rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
@@ -90,28 +112,34 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                 </div>
               )}
 
-              {/* SELEÇÃO DA SALA DE AULA VINCULADA */}
-              {classrooms.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
-                    <School className="h-3.5 w-3.5 text-indigo-400" />
-                    Vincular à Turma / Sala de Aula *
-                  </label>
+              {/* SELEÇÃO DINÂMICA DA SALA DE AULA VINCULADA */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
+                  <School className="h-3.5 w-3.5 text-indigo-400" />
+                  Escolher Turma / Sala de Aula *
+                </label>
+                {classList.length === 0 ? (
+                  <div className="rounded-xl border border-amber-800/50 bg-amber-950/40 p-3 text-xs text-amber-300 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>Nenhuma sala de aula encontrada. Crie uma sala primeiro na aba &quot;Salas de Aula&quot;.</span>
+                  </div>
+                ) : (
                   <select
                     name="classroom_id"
                     value={selectedClassroom}
                     onChange={(e) => setSelectedClassroom(e.target.value)}
+                    required
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
                   >
-                    <option value="">-- Material Geral (Todas as Turmas) --</option>
-                    {classrooms.map((c) => (
+                    <option value="">-- Selecione a Sala de Aula --</option>
+                    {classList.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
                   </select>
-                </div>
-              )}
+                )}
+              </div>
 
               <div>
                 <Input
