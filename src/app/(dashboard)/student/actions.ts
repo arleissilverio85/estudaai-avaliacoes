@@ -193,6 +193,14 @@ export async function submitQuizAttempt(
     .eq('id', quizId)
     .maybeSingle()
 
+  // Garantir que o perfil do aluno existe em public.profiles para não violar foreign key
+  await (supabase.from('profiles') as any).upsert({
+    id: user.id,
+    name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Aluno',
+    email: user.email || '',
+    role: 'student',
+  }, { onConflict: 'id' })
+
   // 3. Registrar tentativa (attempt) no banco de dados
   const { data: attemptData, error: attemptError } = await (supabase.from('attempts') as any)
     .insert({
@@ -208,6 +216,10 @@ export async function submitQuizAttempt(
 
   if (attemptError) {
     console.error('Falha ao inserir tentativa no banco:', attemptError)
+    return {
+      success: false,
+      error: 'Erro ao salvar avaliação no banco: ' + attemptError.message,
+    }
   }
 
   if (attemptData?.id && answersToInsert.length > 0) {

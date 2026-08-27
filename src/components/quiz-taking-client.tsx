@@ -113,25 +113,23 @@ export function QuizTakingClient({
           </p>
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
-            <div className="rounded-2xl bg-slate-900/90 px-6 py-4 border border-slate-800 shadow-md">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Sua Nota Final
+            <div className="rounded-2xl bg-slate-900/90 px-6 py-4 border border-emerald-800/60 shadow-md">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center justify-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Acertos
               </span>
-              <p
-                className={`font-mono text-3xl font-black ${
-                  isApproved ? 'text-emerald-400' : 'text-amber-400'
-                }`}
-              >
-                {result.score?.toFixed(1)} / 10.0
+              <p className="font-mono text-3xl font-black text-emerald-400 mt-1">
+                {result.correctCount} <span className="text-sm text-slate-400">/ {result.totalQuestions}</span>
               </p>
             </div>
 
-            <div className="rounded-2xl bg-slate-900/90 px-6 py-4 border border-slate-800 shadow-md">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Acertos
+            <div className="rounded-2xl bg-slate-900/90 px-6 py-4 border border-rose-800/60 shadow-md">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center justify-center gap-1">
+                <XCircle className="h-3.5 w-3.5" />
+                Erros
               </span>
-              <p className="font-mono text-3xl font-black text-white">
-                {result.correctCount} <span className="text-sm text-slate-500">de {result.totalQuestions}</span>
+              <p className="font-mono text-3xl font-black text-rose-400 mt-1">
+                {(result.totalQuestions || 0) - (result.correctCount || 0)} <span className="text-sm text-slate-400">/ {result.totalQuestions}</span>
               </p>
             </div>
           </div>
@@ -139,7 +137,7 @@ export function QuizTakingClient({
           <div className="mt-6 flex justify-center gap-3">
             <Link href="/student/dashboard">
               <Button variant="primary" size="md">
-                Voltar para Minhas Salas
+                Voltar para Minhas Salas & Histórico
               </Button>
             </Link>
           </div>
