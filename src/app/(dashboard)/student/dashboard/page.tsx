@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { ClassroomCard } from '@/components/classroom-card'
 import { JoinClassroomDialog } from '@/components/join-classroom-dialog'
-import { KeyRound } from 'lucide-react'
+import { StudentHistoryTable, StudentHistoryItem } from '@/components/student-history-table'
+import { KeyRound, History, School } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,9 +14,10 @@ export default async function StudentDashboardPage() {
   } = await supabase.auth.getUser()
 
   let classrooms: any[] = []
+  let historyItems: StudentHistoryItem[] = []
 
   if (user) {
-    // Buscar salas onde o aluno está matriculado
+    // 1. Buscar salas onde o aluno está matriculado
     const { data: enrollments } = await supabase
       .from('classroom_students')
       .select(`
@@ -45,10 +47,57 @@ export default async function StudentDashboardPage() {
           }
         })
     }
+
+    // 2. Buscar histórico de tentativas/avaliações do aluno
+    const { data: attemptsData } = await (supabase.from('attempts') as any)
+      .select(`
+        id,
+        score,
+        started_at,
+        finished_at,
+        quiz_id,
+        quizzes:quiz_id (
+          id,
+          title,
+          question_count,
+          classrooms:classroom_id (
+            id,
+            name
+          )
+        ),
+        answers:answers (
+          id,
+          is_correct
+        )
+      `)
+      .eq('student_id', user.id)
+      .not('finished_at', 'is', null)
+      .order('finished_at', { ascending: false })
+
+    if (attemptsData) {
+      historyItems = attemptsData.map((att: any) => {
+        const answersList = att.answers || []
+        const correctCount = answersList.filter((a: any) => a.is_correct).length
+        const totalAnswers = answersList.length || att.quizzes?.question_count || 10
+        const wrongCount = Math.max(0, totalAnswers - correctCount)
+
+        return {
+          id: att.id,
+          quizId: att.quiz_id,
+          quizTitle: att.quizzes?.title || 'Avaliação',
+          classroomName: att.quizzes?.classrooms?.name || 'Geral',
+          score: Number(att.score) || 0,
+          totalQuestions: totalAnswers,
+          correctAnswers: correctCount,
+          wrongAnswers: wrongCount,
+          finishedAt: att.finished_at || new Date().toISOString(),
+        }
+      })
+    }
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-10 animate-in fade-in duration-300">
       {/* HEADER DO DASHBOARD */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/80 pb-6">
         <div>
@@ -56,7 +105,7 @@ export default async function StudentDashboardPage() {
             Área do Aluno
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Acesse suas salas de aula e realize suas avaliações.
+            Acesse suas salas de aula, acompanhe seu histórico de notas e mostre seu progresso.
           </p>
         </div>
         <div>
@@ -64,10 +113,13 @@ export default async function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* LISTA DE SALAS MATRICULADAS */}
+      {/* SEÇÃO 1: LISTA DE SALAS MATRICULADAS */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Salas Matriculadas</h2>
+          <div className="flex items-center gap-2">
+            <School className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-lg font-bold text-white">Minhas Salas de Aula</h2>
+          </div>
           <span className="text-xs font-semibold text-slate-400">
             {classrooms.length} {classrooms.length === 1 ? 'sala' : 'salas'}
           </span>
@@ -98,6 +150,22 @@ export default async function StudentDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* SEÇÃO 2: HISTÓRICO DE PROVAS & NOTAS DO ALUNO */}
+      <div className="space-y-4 pt-6 border-t border-slate-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <History className="h-5 w-5 text-emerald-400" />
+            <h2 className="text-lg font-bold text-white">📜 Meu Histórico de Avaliações & Acertos</h2>
+          </div>
+          <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold text-slate-300 border border-slate-700">
+            {historyItems.length} {historyItems.length === 1 ? 'concluída' : 'concluídas'}
+          </span>
+        </div>
+
+        <StudentHistoryTable history={historyItems} />
+      </div>
     </div>
   )
 }
+

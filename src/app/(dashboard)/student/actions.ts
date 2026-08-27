@@ -192,7 +192,7 @@ export async function submitQuizAttempt(
     .insert({
       quiz_id: quizId,
       student_id: user.id,
-      status: 'submitted',
+      status: 'completed',
       score: finalScore,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
@@ -221,3 +221,29 @@ export async function submitQuizAttempt(
     results: questionResults,
   }
 }
+
+export async function deleteStudentAttempt(attemptId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { success: false, error: 'Não autenticado.' }
+  }
+
+  const { error } = await supabase
+    .from('attempts')
+    .delete()
+    .eq('id', attemptId)
+    .eq('student_id', user.id)
+
+  if (error) {
+    return { success: false, error: 'Erro ao remover avaliação do histórico: ' + error.message }
+  }
+
+  revalidatePath('/student/dashboard')
+  return { success: true }
+}
+
