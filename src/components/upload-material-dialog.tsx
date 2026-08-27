@@ -5,17 +5,32 @@ import { uploadAndProcessMaterial, ActionResponse } from '@/app/(dashboard)/teac
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { UploadCloud, FileText, X, Sparkles, FileSpreadsheet, FileCode, Presentation, School, AlertCircle } from 'lucide-react'
+import {
+  UploadCloud,
+  FileText,
+  X,
+  Sparkles,
+  FileSpreadsheet,
+  FileCode,
+  Presentation,
+  School,
+  AlertCircle,
+  Lightbulb,
+  CheckCircle2,
+} from 'lucide-react'
 
 interface UploadMaterialDialogProps {
   classrooms?: { id: string; name: string }[]
   initialClassroomId?: string
 }
 
+const MAX_FILE_SIZE_BYTES = 4.5 * 1024 * 1024 // 4.5 MB (limite ideal para Serverless e extração rápida)
+
 export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: UploadMaterialDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [classList, setClassList] = useState<{ id: string; name: string }[]>(classrooms)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [fileSizeError, setFileSizeError] = useState<string | null>(null)
   const [selectedClassroom, setSelectedClassroom] = useState<string>(initialClassroomId || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -27,6 +42,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
   // Sempre sincronizar a lista de salas quando o modal é aberto
   useEffect(() => {
     if (isOpen) {
+      setFileSizeError(null)
       const supabase = createClient()
       supabase
         .from('classrooms')
@@ -36,9 +52,12 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
           const list = (data as { id: string; name: string }[]) || []
           setClassList(list)
           if (list.length > 0) {
-            // Se não tem sala selecionada ou a que estava selecionada foi apagada
             if (!selectedClassroom || !list.some((c) => c.id === selectedClassroom)) {
-              setSelectedClassroom(initialClassroomId && list.some((c) => c.id === initialClassroomId) ? initialClassroomId : list[0].id)
+              setSelectedClassroom(
+                initialClassroomId && list.some((c) => c.id === initialClassroomId)
+                  ? initialClassroomId
+                  : list[0].id
+              )
             }
           } else {
             setSelectedClassroom('')
@@ -51,12 +70,23 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
     if (state?.success) {
       setIsOpen(false)
       setSelectedFile(null)
+      setFileSizeError(null)
     }
   }, [state?.success])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileSizeError(null)
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0])
+      const file = e.target.files[0]
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        setFileSizeError(
+          `O arquivo selecionado tem ${(file.size / (1024 * 1024)).toFixed(1)} MB. O tamanho máximo recomendado para provas interativas é de 4.5 MB. Selecione um resumo, capítulo ou documento mais compacto.`
+        )
+        setSelectedFile(null)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      setSelectedFile(file)
     }
   }
 
@@ -68,9 +98,12 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
 
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
-    if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return <FileSpreadsheet className="h-6 w-6 text-emerald-400" />
-    if (ext === 'pptx' || ext === 'ppt') return <Presentation className="h-6 w-6 text-amber-400" />
-    if (ext === 'txt' || ext === 'md') return <FileCode className="h-6 w-6 text-cyan-400" />
+    if (ext === 'xlsx' || ext === 'xls' || ext === 'csv')
+      return <FileSpreadsheet className="h-6 w-6 text-emerald-400" />
+    if (ext === 'pptx' || ext === 'ppt')
+      return <Presentation className="h-6 w-6 text-amber-400" />
+    if (ext === 'txt' || ext === 'md')
+      return <FileCode className="h-6 w-6 text-cyan-400" />
     return <FileText className="h-6 w-6 text-indigo-400" />
   }
 
@@ -108,10 +141,28 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
               </button>
             </div>
 
-            <form action={formAction} className="mt-6 space-y-4">
+            {/* DICA PEDAGÓGICA SOBRE TAMANHO E FOCO */}
+            <div className="mt-4 rounded-2xl border border-indigo-500/30 bg-indigo-950/30 p-3.5 text-xs text-indigo-200 flex items-start gap-2.5">
+              <Lightbulb className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-indigo-300">💡 Dica para Provas Dinâmicas:</p>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  Para gerar atividades rápidas (5 a 15 questões), envie resumos, capítulos da matéria ou slides da aula (<strong>até 4.5 MB</strong>). Arquivos focados geram perguntas mais assertivas e sobem instantaneamente!
+                </p>
+              </div>
+            </div>
+
+            <form action={formAction} className="mt-4 space-y-4">
               {state?.error && (
                 <div className="rounded-xl border border-rose-800/60 bg-rose-950/60 p-3 text-xs font-semibold text-rose-300">
                   {state.error}
+                </div>
+              )}
+
+              {fileSizeError && (
+                <div className="rounded-xl border border-amber-800/60 bg-amber-950/60 p-3 text-xs font-semibold text-amber-300 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                  <span>{fileSizeError}</span>
                 </div>
               )}
 
@@ -124,7 +175,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                 {classList.length === 0 ? (
                   <div className="rounded-xl border border-amber-800/50 bg-amber-950/40 p-3 text-xs text-amber-300 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>Nenhuma sala de aula ativa encontrada. Crie uma sala primeiro na aba &quot;Salas de Aula&quot;.</span>
+                    <span>Nenhuma sala de aula ativa encontrada. Crie uma sala primeiro.</span>
                   </div>
                 ) : (
                   <select
@@ -148,7 +199,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                   label="Título do Material *"
                   name="title"
                   required
-                  placeholder="Ex: Apostila de Direito Administrativo - Sala B"
+                  placeholder="Ex: Aula 03 - Direitos Fundamentais"
                 />
               </div>
 
@@ -156,14 +207,14 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                 <Input
                   label="Descrição (Opcional)"
                   name="description"
-                  placeholder="Ex: Conteúdo para a prova do 1º Bimestre"
+                  placeholder="Ex: Conteúdo trabalhado na aula de hoje"
                 />
               </div>
 
               {/* SELEÇÃO DO ARQUIVO */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Arquivo do Celular ou Computador *
+                  Arquivo da Aula (PDF, Word, Slides, Planilha ou TXT) *
                 </label>
 
                 <input
@@ -181,26 +232,31 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                   onClick={() => fileInputRef.current?.click()}
                   className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
                     selectedFile
-                      ? 'border-indigo-500 bg-indigo-950/30'
-                      : 'border-slate-700 bg-slate-950/60 hover:border-slate-600 hover:bg-slate-950'
+                      ? 'border-emerald-500 bg-emerald-950/20'
+                      : 'border-slate-700 bg-slate-950/60 hover:border-indigo-500/50 hover:bg-slate-950'
                   }`}
                 >
                   {selectedFile ? (
                     <div className="flex items-center justify-center gap-3">
                       {getFileIcon(selectedFile.name)}
                       <div className="text-left">
-                        <p className="text-sm font-bold text-white truncate max-w-xs">{selectedFile.name}</p>
-                        <p className="text-xs text-slate-400 font-mono">{formatFileSize(selectedFile.size)}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold text-white truncate max-w-xs">{selectedFile.name}</p>
+                          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        </div>
+                        <p className="text-xs text-emerald-400 font-mono font-semibold">
+                          {formatFileSize(selectedFile.size)} • Pronto para envio
+                        </p>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <UploadCloud className="mx-auto h-8 w-8 text-indigo-400" />
                       <p className="text-sm font-semibold text-slate-200">
-                        Toque para selecionar um arquivo do celular ou PC
+                        Toque para selecionar o arquivo da aula
                       </p>
-                      <p className="text-xs text-slate-500">
-                        Suporta PDF, Word (.docx), Slides (.pptx), Planilhas (.xlsx, .csv) e TXT (até 50MB)
+                      <p className="text-xs text-slate-400">
+                        PDF, Word (.docx), Slides (.pptx), Planilhas ou TXT (Recomendado: até 4.5 MB)
                       </p>
                     </div>
                   )}
