@@ -85,7 +85,7 @@ export default async function QuizReviewPage({ params }: Props) {
         name,
         email
       ),
-      answers:answers (
+      answers (
         id,
         is_correct
       )

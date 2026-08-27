@@ -58,6 +58,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
     .from('classroom_students')
     .select(`
       id,
+      student_id,
       joined_at,
       profiles:student_id (
         id,
@@ -67,6 +68,17 @@ export default async function ClassroomDetailPage({ params }: Props) {
     `)
     .eq('classroom_id', id)
     .order('joined_at', { ascending: false })
+
+  const studentProfileMap: Record<string, { name: string; email: string }> = {}
+  ;(studentsData || []).forEach((s: any) => {
+    const sId = s.profiles?.id || s.student_id
+    if (sId) {
+      studentProfileMap[sId] = {
+        name: s.profiles?.name || 'Aluno',
+        email: s.profiles?.email || '',
+      }
+    }
+  })
 
   // 3. Buscar materiais vinculados a esta sala
   const { data: materialsData } = await (supabase.from('materials') as any)
@@ -85,11 +97,43 @@ export default async function ClassroomDetailPage({ params }: Props) {
   const materials = (materialsData || []) as Material[]
   const quizIds = quizzes.map((q) => q.id)
 
+  const quizMap: Record<string, Quiz> = {}
+  quizzes.forEach((q) => {
+    quizMap[q.id] = q
+  })
+
   // 5. Buscar tentativas e respostas detalhadas dos alunos desta turma específica
   let rankingEntries: RankingEntry[] = []
   let attemptsByStudent: Record<string, any[]> = {}
 
   if (quizIds.length > 0) {
+    // Buscar questões e opções de todos os quizzes desta sala
+    const { data: questionsData } = await (supabase.from('questions') as any)
+      .select(`
+        id,
+        quiz_id,
+        question_text,
+        explanation,
+        order_index,
+        question_options (
+          id,
+          option_text,
+          is_correct,
+          order_index
+        )
+      `)
+      .in('quiz_id', quizIds)
+      .order('order_index', { ascending: true })
+
+    const questionsByQuiz: Record<string, any[]> = {}
+    ;(questionsData || []).forEach((q: any) => {
+      if (!questionsByQuiz[q.quiz_id]) {
+        questionsByQuiz[q.quiz_id] = []
+      }
+      questionsByQuiz[q.quiz_id].push(q)
+    })
+
+    // Buscar tentativas com suas respostas
     const { data: attemptsData } = await (supabase.from('attempts') as any)
       .select(`
         id,
@@ -98,79 +142,60 @@ export default async function ClassroomDetailPage({ params }: Props) {
         finished_at,
         quiz_id,
         student_id,
-        quizzes:quiz_id (
-          id,
-          title,
-          question_count
-        ),
-        profiles:student_id (
-          id,
-          name,
-          email
-        ),
-        answers:answers (
+        answers (
           id,
           question_id,
           selected_option_id,
-          is_correct,
-          questions:question_id (
-            id,
-            question_text,
-            explanation,
-            question_options (
-              id,
-              option_text,
-              is_correct
-            )
-          )
+          is_correct
         )
       `)
       .in('quiz_id', quizIds)
       .not('finished_at', 'is', null)
       .order('score', { ascending: false })
 
-    rankingEntries = (attemptsData || []).map((att: any) => {
+    ;(attemptsData || []).forEach((att: any) => {
+      const qz = quizMap[att.quiz_id]
+      const prof = studentProfileMap[att.student_id] || { name: 'Aluno', email: '' }
       const answersList = att.answers || []
       const correctCount = answersList.filter((a: any) => a.is_correct).length
-      const totalAnswers = answersList.length || att.quizzes?.question_count || 10
+      const totalAnswers = answersList.length || qz?.question_count || 10
       const wrongCount = Math.max(0, totalAnswers - correctCount)
 
-      return {
+      rankingEntries.push({
         attemptId: att.id,
         studentId: att.student_id,
-        studentName: att.profiles?.name || 'Aluno',
-        studentEmail: att.profiles?.email || '',
+        studentName: prof.name,
+        studentEmail: prof.email,
         classroomName: classroom.name,
         quizId: att.quiz_id,
-        quizTitle: att.quizzes?.title || 'Avaliação',
+        quizTitle: qz?.title || 'Avaliação',
         score: Number(att.score) || 0,
         totalQuestions: totalAnswers,
         correctAnswers: correctCount,
         wrongAnswers: wrongCount,
         finishedAt: att.finished_at || new Date().toISOString(),
-      }
-    })
+      })
 
-    // Agrupar tentativas por aluno com dados completos das perguntas e respostas
-    ;(attemptsData || []).forEach((att: any) => {
-      const answersList = att.answers || []
-      const correctCount = answersList.filter((a: any) => a.is_correct).length
-      const totalAnswers = answersList.length || att.quizzes?.question_count || 10
-      const wrongCount = Math.max(0, totalAnswers - correctCount)
+      // Formatar questões com as opções e respostas marcadas
+      const quizQuestions = questionsByQuiz[att.quiz_id] || []
+      const answersMap: Record<string, any> = {}
+      answersList.forEach((ans: any) => {
+        answersMap[ans.question_id] = ans
+      })
 
-      const formattedQuestions = answersList.map((ans: any) => {
-        const q = ans.questions
-        const options = q?.question_options || []
-        const selectedOpt = options.find((o: any) => o.id === ans.selected_option_id)
+      const formattedQuestions = quizQuestions.map((q: any) => {
+        const ans = answersMap[q.id]
+        const options = q.question_options || []
+        const selectedOpt = options.find((o: any) => o.id === ans?.selected_option_id)
         const correctOpt = options.find((o: any) => o.is_correct)
 
         return {
-          questionId: q?.id || ans.question_id,
-          questionText: q?.question_text || 'Questão',
-          explanation: q?.explanation || null,
+          questionId: q.id,
+          questionText: q.question_text || 'Questão',
+          explanation: q.explanation || null,
           selectedOptionText: selectedOpt?.option_text || null,
           correctOptionText: correctOpt?.option_text || null,
-          isCorrect: Boolean(ans.is_correct),
+          isCorrect: Boolean(ans?.is_correct),
           options: options.map((o: any) => ({
             id: o.id,
             optionText: o.option_text,
@@ -186,7 +211,7 @@ export default async function ClassroomDetailPage({ params }: Props) {
       attemptsByStudent[att.student_id].push({
         attemptId: att.id,
         quizId: att.quiz_id,
-        quizTitle: att.quizzes?.title || 'Avaliação',
+        quizTitle: qz?.title || 'Avaliação',
         score: Number(att.score) || 0,
         totalQuestions: totalAnswers,
         correctAnswers: correctCount,
@@ -198,13 +223,16 @@ export default async function ClassroomDetailPage({ params }: Props) {
   }
 
   // 6. Estruturar lista completa de alunos com suas tentativas
-  const studentsWithAttempts: StudentWithAttempts[] = (studentsData || []).map((s: any) => ({
-    id: s.profiles?.id || s.id,
-    name: s.profiles?.name || 'Aluno',
-    email: s.profiles?.email || '',
-    joinedAt: s.joined_at,
-    attempts: attemptsByStudent[s.profiles?.id || s.id] || [],
-  }))
+  const studentsWithAttempts: StudentWithAttempts[] = (studentsData || []).map((s: any) => {
+    const sId = s.profiles?.id || s.student_id || s.id
+    return {
+      id: sId,
+      name: s.profiles?.name || 'Aluno',
+      email: s.profiles?.email || '',
+      joinedAt: s.joined_at,
+      attempts: attemptsByStudent[sId] || [],
+    }
+  })
 
   const classroomList = [{ id: classroom.id, name: classroom.name }]
 
