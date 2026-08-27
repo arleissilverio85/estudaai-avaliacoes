@@ -101,8 +101,11 @@ export default async function QuizReviewPage({ params }: Props) {
 
   const rankingEntries: RankingEntry[] = (attemptsData || []).map((att: any) => {
     const answersList = att.answers || []
-    const correctCount = answersList.filter((a: any) => a.is_correct).length
-    const totalAnswers = answersList.length || questions.length || 10
+    const totalAnswers = quizData.question_count || questions.length || 10
+    let correctCount = answersList.filter((a: any) => a.is_correct).length
+    if (answersList.length === 0 && att.score !== null && totalAnswers > 0) {
+      correctCount = Math.round((Number(att.score) / 10) * totalAnswers)
+    }
     const wrongCount = Math.max(0, totalAnswers - correctCount)
 
     return {

@@ -187,6 +187,12 @@ export async function submitQuizAttempt(
 
   const finalScore = Number(((correctCount / totalQuestions) * 10).toFixed(2))
 
+  // Buscar dados da sala para revalidação
+  const { data: quizInfo } = await (supabase.from('quizzes') as any)
+    .select('id, classroom_id')
+    .eq('id', quizId)
+    .maybeSingle()
+
   // 3. Registrar tentativa (attempt) no banco de dados
   const { data: attemptData, error: attemptError } = await (supabase.from('attempts') as any)
     .insert({
@@ -200,16 +206,32 @@ export async function submitQuizAttempt(
     .select('id')
     .single()
 
-  if (attemptData?.id) {
-    // Inserir respostas detalhadas
-    const answersWithAttempt = answersToInsert.map((ans) => ({
-      ...ans,
-      attempt_id: attemptData.id,
-    }))
-
-    await (supabase.from('answers') as any).insert(answersWithAttempt)
+  if (attemptError) {
+    console.error('Falha ao inserir tentativa no banco:', attemptError)
   }
 
+  if (attemptData?.id && answersToInsert.length > 0) {
+    // Inserir respostas detalhadas
+    const answersWithAttempt = answersToInsert.map((ans) => ({
+      attempt_id: attemptData.id,
+      question_id: ans.question_id,
+      selected_option_id: ans.selected_option_id && ans.selected_option_id.trim() !== '' ? ans.selected_option_id : null,
+      is_correct: Boolean(ans.is_correct),
+      answered_at: new Date().toISOString(),
+    }))
+
+    const { error: answersError } = await (supabase.from('answers') as any).insert(answersWithAttempt)
+    if (answersError) {
+      console.error('Falha ao inserir respostas detalhadas:', answersError)
+    }
+  }
+
+  if (quizInfo?.classroom_id) {
+    revalidatePath(`/teacher/classrooms/${quizInfo.classroom_id}`)
+    revalidatePath(`/student/classrooms/${quizInfo.classroom_id}`)
+  }
+  revalidatePath(`/teacher/quizzes/${quizId}`)
+  revalidatePath('/teacher/dashboard')
   revalidatePath(`/student/quizzes/${quizId}`)
   revalidatePath('/student/dashboard')
 

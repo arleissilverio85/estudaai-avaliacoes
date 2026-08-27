@@ -157,8 +157,13 @@ export default async function ClassroomDetailPage({ params }: Props) {
       const qz = quizMap[att.quiz_id]
       const prof = studentProfileMap[att.student_id] || { name: 'Aluno', email: '' }
       const answersList = att.answers || []
-      const correctCount = answersList.filter((a: any) => a.is_correct).length
-      const totalAnswers = answersList.length || qz?.question_count || 10
+      const totalAnswers = qz?.question_count || (questionsByQuiz[att.quiz_id]?.length) || (answersList.length) || 10
+      
+      let correctCount = answersList.filter((a: any) => a.is_correct).length
+      // Se não encontrou respostas via join de answers, calcula precisamente pela nota e total de questões:
+      if (answersList.length === 0 && att.score !== null && totalAnswers > 0) {
+        correctCount = Math.round((Number(att.score) / 10) * totalAnswers)
+      }
       const wrongCount = Math.max(0, totalAnswers - correctCount)
 
       rankingEntries.push({
