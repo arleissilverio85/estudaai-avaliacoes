@@ -133,30 +133,33 @@ export default async function ClassroomDetailPage({ params }: Props) {
       questionsByQuiz[q.quiz_id].push(q)
     })
 
-    // Buscar tentativas com suas respostas
+    // Buscar tentativas dos quizzes desta sala
     const { data: attemptsData } = await (supabase.from('attempts') as any)
-      .select(`
-        id,
-        score,
-        started_at,
-        finished_at,
-        quiz_id,
-        student_id,
-        answers (
-          id,
-          question_id,
-          selected_option_id,
-          is_correct
-        )
-      `)
+      .select('id, score, started_at, finished_at, quiz_id, student_id')
       .in('quiz_id', quizIds)
       .not('finished_at', 'is', null)
       .order('score', { ascending: false })
 
+    const attemptIds = (attemptsData || []).map((a: any) => a.id).filter(Boolean)
+    const answersByAttempt: Record<string, any[]> = {}
+
+    if (attemptIds.length > 0) {
+      const { data: answersData } = await (supabase.from('answers') as any)
+        .select('id, attempt_id, question_id, selected_option_id, is_correct')
+        .in('attempt_id', attemptIds)
+
+      ;(answersData || []).forEach((ans: any) => {
+        if (!answersByAttempt[ans.attempt_id]) {
+          answersByAttempt[ans.attempt_id] = []
+        }
+        answersByAttempt[ans.attempt_id].push(ans)
+      })
+    }
+
     ;(attemptsData || []).forEach((att: any) => {
       const qz = quizMap[att.quiz_id]
       const prof = studentProfileMap[att.student_id] || { name: 'Aluno', email: '' }
-      const answersList = att.answers || []
+      const answersList = answersByAttempt[att.id] || []
       const totalAnswers = qz?.question_count || (questionsByQuiz[att.quiz_id]?.length) || (answersList.length) || 10
       
       let correctCount = answersList.filter((a: any) => a.is_correct).length

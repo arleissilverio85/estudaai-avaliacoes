@@ -84,15 +84,27 @@ export default async function QuizReviewPage({ params }: Props) {
         id,
         name,
         email
-      ),
-      answers (
-        id,
-        is_correct
       )
     `)
     .eq('quiz_id', id)
     .not('finished_at', 'is', null)
     .order('score', { ascending: false })
+
+  const attemptIds = (attemptsData || []).map((a: any) => a.id).filter(Boolean)
+  const answersByAttempt: Record<string, any[]> = {}
+
+  if (attemptIds.length > 0) {
+    const { data: answersData } = await (supabase.from('answers') as any)
+      .select('id, attempt_id, is_correct')
+      .in('attempt_id', attemptIds)
+
+    ;(answersData || []).forEach((ans: any) => {
+      if (!answersByAttempt[ans.attempt_id]) {
+        answersByAttempt[ans.attempt_id] = []
+      }
+      answersByAttempt[ans.attempt_id].push(ans)
+    })
+  }
 
   const questions = (questionsData || []).map((q: any) => ({
     ...q,
@@ -100,7 +112,7 @@ export default async function QuizReviewPage({ params }: Props) {
   }))
 
   const rankingEntries: RankingEntry[] = (attemptsData || []).map((att: any) => {
-    const answersList = att.answers || []
+    const answersList = answersByAttempt[att.id] || []
     const totalAnswers = quizData.question_count || questions.length || 10
     let correctCount = answersList.filter((a: any) => a.is_correct).length
     if (answersList.length === 0 && att.score !== null && totalAnswers > 0) {
