@@ -1,5 +1,7 @@
+import zlib from 'zlib'
+
 /**
- * Remove caracteres de controle estranhos e normaliza quebras de linha
+ * Remove caracteres de controle estranhos e normaliza quebras de linha preservando acentuação pt-BR
  */
 export function cleanExtractedText(raw: string): string {
   if (!raw) return ''
@@ -16,12 +18,114 @@ export function cleanExtractedText(raw: string): string {
     .trim()
 }
 
+/**
+ * Extração de texto de PDF de alta fidelidade usando Mozilla PDF.js Legacy (Node.js nativo)
+ */
+async function extractTextWithPdfJsLegacy(buffer: Buffer): Promise<string> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const uint8Array = new Uint8Array(buffer)
+
+  const loadingTask = (pdfjs as any).getDocument({
+    data: uint8Array,
+    useSystemFonts: true,
+    disableFontFace: true,
+    verbosity: 0,
+  })
+
+  const pdfDoc = await loadingTask.promise
+  const numPages = pdfDoc.numPages
+  const slidePages: string[] = []
+
+  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+    try {
+      const page = await pdfDoc.getPage(pageNum)
+      const textContent = await (page as any).getTextContent({
+        includeMarkedContent: true,
+      })
+
+      const pageTokens = (textContent.items || [])
+        .map((item: any) => {
+          if (typeof item === 'object' && item !== null) {
+            if ('str' in item && typeof item.str === 'string') return item.str
+            if ('chars' in item && Array.isArray(item.chars)) {
+              return item.chars.map((c: any) => c.c || '').join('')
+            }
+          }
+          return ''
+        })
+        .filter((str: string) => str && str.trim().length > 0)
+
+      if (pageTokens.length > 0) {
+        const pageText = pageTokens.join(' ')
+        slidePages.push(`[Slide / Página ${pageNum}]\n${pageText}`)
+      }
+    } catch (pageErr) {
+      console.warn(`Aviso ao ler página ${pageNum} do PDF:`, pageErr)
+    }
+  }
+
+  return slidePages.join('\n\n')
+}
+
+/**
+ * Fallback de baixo nível: Descompacta streams FlateDecode do PDF e extrai texto de slides/vetores
+ */
+function extractTextFromRawPdfStreams(buffer: Buffer): string {
+  try {
+    const rawPdf = buffer.toString('binary')
+    const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g
+    const extractedBlocks: string[] = []
+    let match: RegExpExecArray | null
+
+    while ((match = streamRegex.exec(rawPdf)) !== null) {
+      const streamContent = match[1]
+      const streamBuffer = Buffer.from(streamContent, 'binary')
+
+      let decompressed = ''
+      try {
+        const inflated = zlib.inflateSync(streamBuffer)
+        decompressed = inflated.toString('utf-8')
+      } catch {
+        try {
+          const rawInflated = zlib.inflateRawSync(streamBuffer)
+          decompressed = rawInflated.toString('utf-8')
+        } catch {
+          decompressed = streamContent
+        }
+      }
+
+      if (decompressed && (decompressed.includes('BT') || decompressed.includes('Tj') || decompressed.includes('TJ'))) {
+        // Extrai strings entre parênteses: (Texto do slide)
+        const textMatches = decompressed.match(/\(([^()]{2,})\)/g)
+        if (textMatches) {
+          const strings = textMatches
+            .map((s) => s.slice(1, -1).replace(/\\([()\\])/g, '$1'))
+            .filter((s) => s.trim().length > 1 && !/^[\x00-\x1F]+$/.test(s))
+
+          if (strings.length > 0) {
+            extractedBlocks.push(strings.join(' '))
+          }
+        }
+      }
+    }
+
+    return extractedBlocks.join('\n')
+  } catch (err) {
+    console.warn('Fallback de streams brutos falhou:', err)
+    return ''
+  }
+}
+
+/**
+ * Extração de texto universal multiformato (PDF, Word, PowerPoint, Excel, TXT)
+ */
 export async function extractTextFromFile(
   buffer: Buffer,
   fileName: string,
   mimeType?: string
 ): Promise<string> {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  const cleanName = fileName.replace(/_/g, ' ')
 
   try {
     // 1. Arquivos de Texto Puro / Markdown / JSON / CSV
@@ -36,35 +140,25 @@ export async function extractTextFromFile(
     ) {
       const text = buffer.toString('utf-8')
       const cleaned = cleanExtractedText(text)
-      if (cleaned.length >= 20) {
+      if (cleaned.length >= 10) {
         return cleaned
       }
     }
 
-    // 2. Arquivos PDF (.pdf)
+    // 2. Arquivos PDF (.pdf) - Pipeline Multi-Estágio Robusto
     if (ext === 'pdf' || mimeType?.includes('pdf')) {
-      // 2.1 Tentativa primária com PDFParse v2 (Dynamic Import)
+      // 2.1 Estágio 1: Mozilla PDF.js Legacy (O mais preciso para slides, PDFs e apostilas)
       try {
-        const { PDFParse } = await import('pdf-parse')
-        const parser = new PDFParse({ data: buffer })
-        const data = await parser.getText()
-        try {
-          await parser.destroy()
-        } catch {
-          // Ignore destroy errors
+        const pdfJsText = await extractTextWithPdfJsLegacy(buffer)
+        const cleaned = cleanExtractedText(pdfJsText)
+        if (cleaned.length >= 15) {
+          return cleaned
         }
-
-        if (data?.text) {
-          const cleaned = cleanExtractedText(data.text)
-          if (cleaned.length >= 20) {
-            return cleaned
-          }
-        }
-      } catch (pdfErr) {
-        console.warn('PDFParse falhou, tentando fallback com OfficeParser:', pdfErr)
+      } catch (pdfJsErr) {
+        console.warn('PDF.js Legacy falhou, tentando próximo motor:', pdfJsErr)
       }
 
-      // 2.2 Fallback de PDF via OfficeParser (Dynamic Import)
+      // 2.2 Estágio 2: OfficeParser (para apresentações e PDFs do office)
       try {
         const { parseOffice } = await import('officeparser')
         const officeRes = await parseOffice(buffer)
@@ -75,32 +169,96 @@ export async function extractTextFromFile(
             ? officeRes.toText()
             : ''
         const cleaned = cleanExtractedText(officeText)
-        if (cleaned.length >= 20) {
+        if (cleaned.length >= 15) {
           return cleaned
         }
       } catch (officeErr) {
         console.warn('OfficeParser fallback para PDF falhou:', officeErr)
       }
+
+      // 2.3 Estágio 3: PDFParse v2
+      try {
+        const { PDFParse } = await import('pdf-parse')
+        const parser = new PDFParse({ data: buffer })
+        const data = await parser.getText()
+        try {
+          await parser.destroy()
+        } catch {
+          // Ignorar
+        }
+        if (data?.text) {
+          const cleaned = cleanExtractedText(data.text)
+          if (cleaned.length >= 15) {
+            return cleaned
+          }
+        }
+      } catch (pdfParseErr) {
+        console.warn('PDFParse v2 falhou:', pdfParseErr)
+      }
+
+      // 2.4 Estágio 4: Decompressão de Streams de Slides / Vetores
+      try {
+        const streamText = extractTextFromRawPdfStreams(buffer)
+        const cleaned = cleanExtractedText(streamText)
+        if (cleaned.length >= 15) {
+          return cleaned
+        }
+      } catch (streamErr) {
+        console.warn('Stream extraction falhou:', streamErr)
+      }
     }
 
-    // 3. Documentos Word (.docx)
-    if (ext === 'docx' || mimeType?.includes('wordprocessingml.document')) {
+    // 3. Apresentações de Slides (.pptx, .ppt, .odp)
+    if (ext === 'pptx' || ext === 'ppt' || ext === 'odp' || mimeType?.includes('presentation') || mimeType?.includes('powerpoint')) {
+      try {
+        const { parseOffice } = await import('officeparser')
+        const res = await parseOffice(buffer)
+        const officeText =
+          typeof res === 'string'
+            ? res
+            : typeof res?.toText === 'function'
+            ? res.toText()
+            : ''
+        const cleaned = cleanExtractedText(officeText)
+        if (cleaned.length >= 10) {
+          return cleaned
+        }
+      } catch (err) {
+        console.warn('OfficeParser PPTX warning:', err)
+      }
+    }
+
+    // 4. Documentos Word (.docx, .doc, .odt)
+    if (ext === 'docx' || ext === 'doc' || ext === 'odt' || mimeType?.includes('wordprocessingml.document') || mimeType?.includes('msword')) {
       try {
         const mammothModule = await import('mammoth')
         const mammoth = (mammothModule as any).default || mammothModule
         const result = await mammoth.extractRawText({ buffer })
         if (result?.value) {
           const cleaned = cleanExtractedText(result.value)
-          if (cleaned.length >= 20) {
+          if (cleaned.length >= 10) {
             return cleaned
           }
         }
       } catch (err) {
         console.warn('Mammoth docx parse warning, tentando OfficeParser:', err)
       }
+
+      // Fallback para OfficeParser no Word
+      try {
+        const { parseOffice } = await import('officeparser')
+        const res = await parseOffice(buffer)
+        const officeText = typeof res === 'string' ? res : res?.toText?.() || ''
+        const cleaned = cleanExtractedText(officeText)
+        if (cleaned.length >= 10) {
+          return cleaned
+        }
+      } catch (err) {
+        console.warn('OfficeParser Word warning:', err)
+      }
     }
 
-    // 4. Planilhas Excel (.xlsx, .xls)
+    // 5. Planilhas Excel (.xlsx, .xls)
     if (ext === 'xlsx' || ext === 'xls' || mimeType?.includes('spreadsheet')) {
       try {
         const XLSX = await import('xlsx')
@@ -112,7 +270,7 @@ export async function extractTextFromFile(
           fullText += `--- Planilha: ${sheetName} ---\n${csvText}\n\n`
         })
         const cleaned = cleanExtractedText(fullText)
-        if (cleaned.length >= 20) {
+        if (cleaned.length >= 10) {
           return cleaned
         }
       } catch (err) {
@@ -120,40 +278,22 @@ export async function extractTextFromFile(
       }
     }
 
-    // 5. Apresentações de Slides (.pptx, .ppt) e outros formatos Office (.doc, .odt, .odp)
-    try {
-      const { parseOffice } = await import('officeparser')
-      const res = await parseOffice(buffer)
-      const officeText =
-        typeof res === 'string'
-          ? res
-          : typeof res?.toText === 'function'
-          ? res.toText()
-          : ''
-      const cleaned = cleanExtractedText(officeText)
-      if (cleaned.length >= 20) {
-        return cleaned
-      }
-    } catch (err) {
-      console.warn('OfficeParser generic parse warning:', err)
-    }
-
-    // 6. Fallback final: decodificação limpa UTF-8 para arquivos baseados em texto
-    const rawText = buffer.toString('utf-8')
-    const cleaned = cleanExtractedText(rawText)
-    const printableRatio = (cleaned.match(/[a-zA-Z0-9áéíóúãõâêîôûàçÁÉÍÓÚÃÕÂÊÎÔÛÀÇ\s]/g) || []).length / (cleaned.length || 1)
-    if (cleaned.length >= 30 && printableRatio > 0.75) {
-      return cleaned
+    // 6. Fallback final: decodificação limpa UTF-8 / Latin1 para qualquer arquivo
+    const rawUtf8 = buffer.toString('utf-8')
+    const cleanedUtf8 = cleanExtractedText(rawUtf8)
+    const printableRatio = (cleanedUtf8.match(/[a-zA-Z0-9áéíóúãõâêîôûàçÁÉÍÓÚÃÕÂÊÎÔÛÀÇ\s]/g) || []).length / (cleanedUtf8.length || 1)
+    if (cleanedUtf8.length >= 20 && printableRatio > 0.65) {
+      return cleanedUtf8
     }
 
     throw new Error(
-      `Não foi possível extrair texto legível do arquivo "${fileName}". Certifique-se de que o arquivo não está protegido por senha, corrompido ou composto apenas por imagens escaneadas sem texto selecionável.`
+      `Não foi possível extrair texto legível do arquivo "${cleanName}". O arquivo pode conter apenas imagens escaneadas sem camada de texto OCR ou estar corrompido.`
     )
   } catch (globalError: any) {
     console.error(`Erro ao processar arquivo ${fileName}:`, globalError)
     throw new Error(
       globalError.message ||
-        `Falha ao extrair texto do arquivo "${fileName}". Tente salvar como PDF com texto selecionável ou colar o texto diretamente.`
+        `Falha ao extrair texto do arquivo "${cleanName}". Você também pode copiar e colar o texto ou resumo dos slides diretamente no formulário.`
     )
   }
 }
