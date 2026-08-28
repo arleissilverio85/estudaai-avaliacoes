@@ -20,105 +20,128 @@ export type ActionResponse = {
  * ============================================================================== */
 
 export async function createClassroom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const name = formData.get('name') as string
-  const description = formData.get('description') as string | null
-  const customCode = formData.get('join_code') as string | null
+  try {
+    const name = formData.get('name') as string
+    const description = formData.get('description') as string | null
+    const customCode = formData.get('join_code') as string | null
 
-  if (!name || name.trim().length === 0) {
-    return { error: 'O nome da sala é obrigatório.' }
-  }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: 'Não autenticado.' }
-  }
-
-  const join_code = customCode && customCode.trim().length > 0 
-    ? customCode.trim().toUpperCase() 
-    : generateJoinCode(name)
-
-  const { data, error } = await (supabase.from('classrooms') as any)
-    .insert({
-      teacher_id: user.id,
-      name: name.trim(),
-      description: description?.trim() || null,
-      join_code,
-      is_active: true,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    if (error.code === '23505') {
-      return { error: 'Este código de sala já está em uso. Tente outro código ou gere automaticamente.' }
+    if (!name || name.trim().length === 0) {
+      return { error: 'O nome da sala é obrigatório.' }
     }
-    return { error: 'Erro ao criar sala de aula: ' + error.message }
-  }
 
-  revalidatePath('/teacher/dashboard')
-  revalidatePath('/teacher/materials')
-  revalidatePath('/teacher/quizzes')
-  return { success: true, message: `Sala "${name}" criada com sucesso! Código: ${join_code}`, data }
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return { error: 'Não autenticado ou sessão expirada. Faça login novamente.' }
+    }
+
+    // Garantir que o perfil do professor existe no banco para evitar violação de FK
+    await (supabase.from('profiles') as any).upsert({
+      id: user.id,
+      name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Professor',
+      email: user.email || '',
+      role: 'teacher',
+    }, { onConflict: 'id' })
+
+    const join_code = customCode && customCode.trim().length > 0 
+      ? customCode.trim().toUpperCase() 
+      : generateJoinCode(name)
+
+    const { data, error } = await (supabase.from('classrooms') as any)
+      .insert({
+        teacher_id: user.id,
+        name: name.trim(),
+        description: description?.trim() || null,
+        join_code,
+        is_active: true,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      if (error.code === '23505') {
+        return { error: 'Este código de sala já está em uso. Tente outro código ou gere automaticamente.' }
+      }
+      return { error: 'Erro ao criar sala de aula: ' + error.message }
+    }
+
+    revalidatePath('/teacher/dashboard')
+    revalidatePath('/teacher/materials')
+    revalidatePath('/teacher/quizzes')
+    return { success: true, message: `Sala "${name}" criada com sucesso! Código: ${join_code}`, data }
+  } catch (err: any) {
+    console.error('Erro ao criar sala:', err)
+    return { error: 'Falha ao processar criação de sala: ' + (err.message || 'Erro inesperado') }
+  }
 }
 
 export async function updateClassroom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const classroomId = formData.get('id') as string
-  const name = formData.get('name') as string
-  const description = formData.get('description') as string | null
-  const is_active = formData.get('is_active') === 'true'
+  try {
+    const classroomId = formData.get('id') as string
+    const name = formData.get('name') as string
+    const description = formData.get('description') as string | null
+    const is_active = formData.get('is_active') === 'true'
 
-  if (!classroomId || !name || name.trim().length === 0) {
-    return { error: 'Dados incompletos para atualizar a sala.' }
+    if (!classroomId || !name || name.trim().length === 0) {
+      return { error: 'Dados incompletos para atualizar a sala.' }
+    }
+
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) return { error: 'Não autorizado.' }
+
+    const { data, error } = await (supabase.from('classrooms') as any)
+      .update({
+        name: name.trim(),
+        description: description?.trim() || null,
+        is_active,
+      })
+      .eq('id', classroomId)
+      .eq('teacher_id', user.id)
+      .select()
+      .single()
+
+    if (error) {
+      return { error: 'Erro ao atualizar sala: ' + error.message }
+    }
+
+    revalidatePath('/teacher/dashboard')
+    revalidatePath('/teacher/materials')
+    revalidatePath('/teacher/quizzes')
+    revalidatePath(`/teacher/classrooms/${classroomId}`)
+    return { success: true, message: 'Sala atualizada com sucesso!', data }
+  } catch (err: any) {
+    console.error('Erro ao atualizar sala:', err)
+    return { error: 'Falha ao atualizar sala: ' + (err.message || 'Erro inesperado') }
   }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return { error: 'Não autorizado.' }
-
-  const { data, error } = await (supabase.from('classrooms') as any)
-    .update({
-      name: name.trim(),
-      description: description?.trim() || null,
-      is_active,
-    })
-    .eq('id', classroomId)
-    .eq('teacher_id', user.id)
-    .select()
-    .single()
-
-  if (error) {
-    return { error: 'Erro ao atualizar sala: ' + error.message }
-  }
-
-  revalidatePath('/teacher/dashboard')
-  revalidatePath('/teacher/materials')
-  revalidatePath('/teacher/quizzes')
-  revalidatePath(`/teacher/classrooms/${classroomId}`)
-  return { success: true, message: 'Sala atualizada com sucesso!', data }
 }
 
 export async function deleteClassroom(classroomId: string): Promise<ActionResponse> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (!user) return { error: 'Não autorizado.' }
+    if (authError || !user) return { error: 'Não autorizado.' }
 
-  const { error } = await (supabase.from('classrooms') as any)
-    .delete()
-    .eq('id', classroomId)
-    .eq('teacher_id', user.id)
+    const { error } = await (supabase.from('classrooms') as any)
+      .delete()
+      .eq('id', classroomId)
+      .eq('teacher_id', user.id)
 
-  if (error) {
-    return { error: 'Erro ao excluir sala: ' + error.message }
+    if (error) {
+      return { error: 'Erro ao excluir sala: ' + error.message }
+    }
+
+    revalidatePath('/teacher/dashboard')
+    revalidatePath('/teacher/materials')
+    revalidatePath('/teacher/quizzes')
+    return { success: true, message: 'Sala removida com sucesso.' }
+  } catch (err: any) {
+    console.error('Erro ao excluir sala:', err)
+    return { error: 'Falha ao excluir sala: ' + (err.message || 'Erro inesperado') }
   }
-
-  revalidatePath('/teacher/dashboard')
-  revalidatePath('/teacher/materials')
-  revalidatePath('/teacher/quizzes')
-  return { success: true, message: 'Sala removida com sucesso.' }
 }
 
 /* ==============================================================================
@@ -517,154 +540,180 @@ export async function generateQuizWithAI(prevState: ActionResponse | null, formD
 }
 
 export async function createQuizDraft(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const classroom_id = formData.get('classroom_id') as string
-  const title = formData.get('title') as string
-  const description = formData.get('description') as string | null
-  const question_type = (formData.get('question_type') as QuizQuestionType) || 'multiple_choice'
-  const status = (formData.get('status') as QuizStatus) || 'draft'
+  try {
+    const classroom_id = formData.get('classroom_id') as string
+    const title = formData.get('title') as string
+    const description = formData.get('description') as string | null
+    const question_type = (formData.get('question_type') as QuizQuestionType) || 'multiple_choice'
+    const status = (formData.get('status') as QuizStatus) || 'draft'
 
-  if (!classroom_id || !title || title.trim().length === 0) {
-    return { error: 'Selecione uma sala e informe o título da avaliação.' }
+    if (!classroom_id || !title || title.trim().length === 0) {
+      return { error: 'Selecione uma sala e informe o título da avaliação.' }
+    }
+
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) return { error: 'Não autenticado.' }
+
+    const { data, error } = await (supabase.from('quizzes') as any)
+      .insert({
+        teacher_id: user.id,
+        classroom_id,
+        title: title.trim(),
+        description: description?.trim() || null,
+        question_type,
+        status,
+        question_count: 0,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      return { error: 'Erro ao criar avaliação: ' + error.message }
+    }
+
+    revalidatePath('/teacher/quizzes')
+    revalidatePath(`/teacher/classrooms/${classroom_id}`)
+    return { success: true, message: 'Avaliação cadastrada com sucesso!', data }
+  } catch (err: any) {
+    console.error('Erro ao criar avaliação:', err)
+    return { error: 'Falha ao processar avaliação: ' + (err.message || 'Erro inesperado') }
   }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return { error: 'Não autenticado.' }
-
-  const { data, error } = await (supabase.from('quizzes') as any)
-    .insert({
-      teacher_id: user.id,
-      classroom_id,
-      title: title.trim(),
-      description: description?.trim() || null,
-      question_type,
-      status,
-      question_count: 0,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    return { error: 'Erro ao criar avaliação: ' + error.message }
-  }
-
-  revalidatePath('/teacher/quizzes')
-  revalidatePath(`/teacher/classrooms/${classroom_id}`)
-  return { success: true, message: 'Avaliação cadastrada com sucesso!', data }
 }
 
 export async function updateQuiz(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const quizId = formData.get('id') as string
-  const classroom_id = formData.get('classroom_id') as string
-  const title = formData.get('title') as string
-  const description = formData.get('description') as string | null
-  const question_type = (formData.get('question_type') as QuizQuestionType) || 'multiple_choice'
-  const status = (formData.get('status') as QuizStatus) || 'draft'
+  try {
+    const quizId = formData.get('id') as string
+    const classroom_id = formData.get('classroom_id') as string
+    const title = formData.get('title') as string
+    const description = formData.get('description') as string | null
+    const question_type = (formData.get('question_type') as QuizQuestionType) || 'multiple_choice'
+    const status = (formData.get('status') as QuizStatus) || 'draft'
 
-  if (!quizId || !classroom_id || !title || title.trim().length === 0) {
-    return { error: 'Dados incompletos para atualizar a avaliação.' }
+    if (!quizId || !classroom_id || !title || title.trim().length === 0) {
+      return { error: 'Dados incompletos para atualizar a avaliação.' }
+    }
+
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) return { error: 'Não autenticado.' }
+
+    const { data, error } = await (supabase.from('quizzes') as any)
+      .update({
+        classroom_id,
+        title: title.trim(),
+        description: description?.trim() || null,
+        question_type,
+        status,
+      })
+      .eq('id', quizId)
+      .eq('teacher_id', user.id)
+      .select()
+      .single()
+
+    if (error) {
+      return { error: 'Erro ao atualizar avaliação: ' + error.message }
+    }
+
+    revalidatePath('/teacher/quizzes')
+    revalidatePath(`/teacher/classrooms/${classroom_id}`)
+    return { success: true, message: 'Avaliação atualizada com sucesso!', data }
+  } catch (err: any) {
+    console.error('Erro ao atualizar avaliação:', err)
+    return { error: 'Falha ao atualizar avaliação: ' + (err.message || 'Erro inesperado') }
   }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return { error: 'Não autenticado.' }
-
-  const { data, error } = await (supabase.from('quizzes') as any)
-    .update({
-      classroom_id,
-      title: title.trim(),
-      description: description?.trim() || null,
-      question_type,
-      status,
-    })
-    .eq('id', quizId)
-    .eq('teacher_id', user.id)
-    .select()
-    .single()
-
-  if (error) {
-    return { error: 'Erro ao atualizar avaliação: ' + error.message }
-  }
-
-  revalidatePath('/teacher/quizzes')
-  revalidatePath(`/teacher/classrooms/${classroom_id}`)
-  return { success: true, message: 'Avaliação atualizada com sucesso!', data }
 }
 
 export async function deleteQuiz(quizId: string): Promise<ActionResponse> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (!user) return { error: 'Não autorizado.' }
+    if (authError || !user) return { error: 'Não autorizado.' }
 
-  const { error } = await (supabase.from('quizzes') as any)
-    .delete()
-    .eq('id', quizId)
-    .eq('teacher_id', user.id)
+    const { error } = await (supabase.from('quizzes') as any)
+      .delete()
+      .eq('id', quizId)
+      .eq('teacher_id', user.id)
 
-  if (error) {
-    return { error: 'Erro ao excluir avaliação: ' + error.message }
+    if (error) {
+      return { error: 'Erro ao excluir avaliação: ' + error.message }
+    }
+
+    revalidatePath('/teacher/quizzes')
+    return { success: true, message: 'Avaliação excluída com sucesso.' }
+  } catch (err: any) {
+    console.error('Erro ao excluir avaliação:', err)
+    return { error: 'Falha ao excluir avaliação: ' + (err.message || 'Erro inesperado') }
   }
-
-  revalidatePath('/teacher/quizzes')
-  return { success: true, message: 'Avaliação excluída com sucesso.' }
 }
 
 export async function publishQuiz(quizId: string): Promise<ActionResponse> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (!user) return { error: 'Não autorizado.' }
+    if (authError || !user) return { error: 'Não autorizado.' }
 
-  const { data, error } = await (supabase.from('quizzes') as any)
-    .update({
-      status: 'published',
-    })
-    .eq('id', quizId)
-    .eq('teacher_id', user.id)
-    .select('id, classroom_id')
-    .single()
+    const { data, error } = await (supabase.from('quizzes') as any)
+      .update({
+        status: 'published',
+      })
+      .eq('id', quizId)
+      .eq('teacher_id', user.id)
+      .select('id, classroom_id')
+      .single()
 
-  if (error) {
-    return { error: 'Erro ao publicar avaliação: ' + error.message }
+    if (error) {
+      return { error: 'Erro ao publicar avaliação: ' + error.message }
+    }
+
+    revalidatePath('/teacher/quizzes')
+    revalidatePath(`/teacher/quizzes/${quizId}`)
+    if (data?.classroom_id) {
+      revalidatePath(`/teacher/classrooms/${data.classroom_id}`)
+      revalidatePath(`/student/classrooms/${data.classroom_id}`)
+    }
+    return { success: true, message: 'Avaliação publicada! Agora os alunos podem visualizá-la.' }
+  } catch (err: any) {
+    console.error('Erro ao publicar avaliação:', err)
+    return { error: 'Falha ao publicar avaliação: ' + (err.message || 'Erro inesperado') }
   }
-
-  revalidatePath('/teacher/quizzes')
-  revalidatePath(`/teacher/quizzes/${quizId}`)
-  if (data?.classroom_id) {
-    revalidatePath(`/teacher/classrooms/${data.classroom_id}`)
-    revalidatePath(`/student/classrooms/${data.classroom_id}`)
-  }
-  return { success: true, message: 'Avaliação publicada! Agora os alunos podem visualizá-la.' }
 }
 
 export async function unpublishQuiz(quizId: string): Promise<ActionResponse> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (!user) return { error: 'Não autorizado.' }
+    if (authError || !user) return { error: 'Não autorizado.' }
 
-  const { data, error } = await (supabase.from('quizzes') as any)
-    .update({
-      status: 'draft',
-    })
-    .eq('id', quizId)
-    .eq('teacher_id', user.id)
-    .select('id, classroom_id')
-    .single()
+    const { data, error } = await (supabase.from('quizzes') as any)
+      .update({
+        status: 'draft',
+      })
+      .eq('id', quizId)
+      .eq('teacher_id', user.id)
+      .select('id, classroom_id')
+      .single()
 
-  if (error) {
-    return { error: 'Erro ao ocultar avaliação: ' + error.message }
+    if (error) {
+      return { error: 'Erro ao ocultar avaliação: ' + error.message }
+    }
+
+    revalidatePath('/teacher/quizzes')
+    revalidatePath(`/teacher/quizzes/${quizId}`)
+    if (data?.classroom_id) {
+      revalidatePath(`/teacher/classrooms/${data.classroom_id}`)
+      revalidatePath(`/student/classrooms/${data.classroom_id}`)
+    }
+    return { success: true, message: 'Avaliação em rascunho (oculta dos alunos).' }
+  } catch (err: any) {
+    console.error('Erro ao ocultar avaliação:', err)
+    return { error: 'Falha ao ocultar avaliação: ' + (err.message || 'Erro inesperado') }
   }
-
-  revalidatePath('/teacher/quizzes')
-  revalidatePath(`/teacher/quizzes/${quizId}`)
-  if (data?.classroom_id) {
-    revalidatePath(`/teacher/classrooms/${data.classroom_id}`)
-    revalidatePath(`/student/classrooms/${data.classroom_id}`)
-  }
-  return { success: true, message: 'Avaliação em rascunho (oculta dos alunos).' }
 }
+
 
