@@ -70,7 +70,7 @@ export default function HomePage() {
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-4">
               <Link href="/register" className="w-full sm:w-auto">
                 <Button size="lg" variant="primary" className="w-full sm:w-auto font-bold text-base px-8 shadow-xl shadow-indigo-600/30 hover:scale-[1.02]">
-                  Começar Gratuitamente
+                  Começar Agora
                   <ArrowRight className="h-5 w-5 ml-1.5" />
                 </Button>
               </Link>
