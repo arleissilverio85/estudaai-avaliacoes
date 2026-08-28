@@ -11,9 +11,17 @@ interface GenerateQuizAiDialogProps {
   classrooms: { id: string; name: string }[]
   materials: { id: string; title: string; file_name?: string | null; classroom_id?: string | null }[]
   initialClassroomId?: string
+  initialMaterialId?: string
+  triggerButton?: React.ReactNode
 }
 
-export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId }: GenerateQuizAiDialogProps) {
+export function GenerateQuizAiDialog({
+  classrooms,
+  materials,
+  initialClassroomId,
+  initialMaterialId,
+  triggerButton,
+}: GenerateQuizAiDialogProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [selectedClassroomId, setSelectedClassroomId] = useState<string>(
@@ -41,23 +49,35 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
   )
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string>(
-    availableMaterials[0]?.id || ''
+    initialMaterialId || availableMaterials[0]?.id || ''
   )
 
-  // Atualizar o material selecionado ao mudar de sala
+  // Atualizar o material selecionado ao mudar de sala ou quando initialMaterialId mudar
   useEffect(() => {
+    if (initialMaterialId && materials.some((m) => m.id === initialMaterialId)) {
+      setSelectedMaterialId(initialMaterialId)
+      const targetMat = materials.find((m) => m.id === initialMaterialId)
+      if (targetMat?.classroom_id) {
+        setSelectedClassroomId(targetMat.classroom_id)
+      }
+      return
+    }
+
     if (availableMaterials.length > 0) {
-      // Se o material atual não pertence à nova lista, seleciona o primeiro disponível
       if (!availableMaterials.some((m) => m.id === selectedMaterialId)) {
         setSelectedMaterialId(availableMaterials[0].id)
       }
     } else {
       setSelectedMaterialId('')
     }
-  }, [selectedClassroomId, availableMaterials, selectedMaterialId])
+  }, [selectedClassroomId, availableMaterials, selectedMaterialId, initialMaterialId, materials])
 
   if (materials.length === 0) {
-    return (
+    return triggerButton ? (
+      <div onClick={() => alert('Você precisa enviar ao menos um material didático antes de gerar avaliações por IA.')}>
+        {triggerButton}
+      </div>
+    ) : (
       <Button
         onClick={() => alert('Você precisa enviar ao menos um material didático antes de gerar avaliações por IA. Acesse a aba Materiais para fazer o upload.')}
         variant="primary"
@@ -72,15 +92,19 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
 
   return (
     <>
-      <Button
-        onClick={() => setIsOpen(true)}
-        variant="primary"
-        size="md"
-        className="font-bold shadow-lg shadow-indigo-600/30"
-      >
-        <Sparkles className="h-4 w-4 mr-1.5 animate-pulse" />
-        Gerar Prova com IA
-      </Button>
+      {triggerButton ? (
+        <div onClick={() => setIsOpen(true)}>{triggerButton}</div>
+      ) : (
+        <Button
+          onClick={() => setIsOpen(true)}
+          variant="primary"
+          size="md"
+          className="font-bold shadow-lg shadow-indigo-600/30"
+        >
+          <Sparkles className="h-4 w-4 mr-1.5 animate-pulse" />
+          Gerar Prova com IA
+        </Button>
+      )}
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
@@ -92,12 +116,12 @@ export function GenerateQuizAiDialog({ classrooms, materials, initialClassroomId
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    Gerador de Avaliações com IA
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-700">
-                      GPT-4o-mini
+                    Gerador de Prova com IA
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700">
+                      NotebookLM Grounding
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400">Questões criadas estritamente a partir do material da turma</p>
+                  <p className="text-xs text-slate-400">Questões formuladas exclusivamente com base no conteúdo do material</p>
                 </div>
               </div>
               <button

@@ -1,5 +1,25 @@
 import * as XLSX from 'xlsx'
 import mammoth from 'mammoth'
+import { PDFParse } from 'pdf-parse'
+import { parseOffice } from 'officeparser'
+
+/**
+ * Remove caracteres de controle estranhos e normaliza quebras de linha
+ */
+export function cleanExtractedText(raw: string): string {
+  if (!raw) return ''
+  return raw
+    // Remove caracteres de controle nulos e não-imprimíveis (exceto \n, \r, \t)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+    // Normaliza quebras de linha
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    // Remove espaços repetidos excessivos em linhas
+    .replace(/[ \t]+/g, ' ')
+    // Remove quebras de linha vazias consecutivas excessivas (> 3)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
 export async function extractTextFromFile(
   buffer: Buffer,
@@ -7,29 +27,82 @@ export async function extractTextFromFile(
   mimeType?: string
 ): Promise<string> {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  let extracted = ''
 
   try {
     // 1. Arquivos de Texto Puro / Markdown / JSON / CSV
-    if (ext === 'txt' || ext === 'md' || ext === 'json' || ext === 'csv' || mimeType?.includes('text/plain') || mimeType?.includes('text/markdown')) {
+    if (
+      ext === 'txt' ||
+      ext === 'md' ||
+      ext === 'json' ||
+      ext === 'csv' ||
+      mimeType?.includes('text/plain') ||
+      mimeType?.includes('text/markdown') ||
+      mimeType?.includes('text/csv')
+    ) {
       const text = buffer.toString('utf-8')
-      if (text && text.trim().length > 0) {
-        return text
+      const cleaned = cleanExtractedText(text)
+      if (cleaned.length >= 20) {
+        return cleaned
       }
     }
 
-    // 2. Arquivos Word (.docx)
+    // 2. Arquivos PDF (.pdf)
+    if (ext === 'pdf' || mimeType?.includes('pdf')) {
+      // 2.1 Tentativa primária com PDFParse v2
+      try {
+        const parser = new PDFParse({ data: buffer })
+        const data = await parser.getText()
+        try {
+          await parser.destroy()
+        } catch {
+          // Ignore destroy errors
+        }
+
+        if (data?.text) {
+          const cleaned = cleanExtractedText(data.text)
+          if (cleaned.length >= 20) {
+            return cleaned
+          }
+        }
+      } catch (pdfErr) {
+        console.warn('PDFParse falhou, tentando fallback com OfficeParser:', pdfErr)
+      }
+
+      // 2.2 Fallback de PDF via OfficeParser
+      try {
+        const officeRes = await parseOffice(buffer)
+        const officeText =
+          typeof officeRes === 'string'
+            ? officeRes
+            : typeof officeRes?.toText === 'function'
+            ? officeRes.toText()
+            : ''
+        const cleaned = cleanExtractedText(officeText)
+        if (cleaned.length >= 20) {
+          return cleaned
+        }
+      } catch (officeErr) {
+        console.warn('OfficeParser fallback para PDF falhou:', officeErr)
+      }
+    }
+
+    // 3. Documentos Word (.docx)
     if (ext === 'docx' || mimeType?.includes('wordprocessingml.document')) {
       try {
         const result = await mammoth.extractRawText({ buffer })
-        if (result?.value && result.value.trim().length > 0) {
-          return result.value
+        if (result?.value) {
+          const cleaned = cleanExtractedText(result.value)
+          if (cleaned.length >= 20) {
+            return cleaned
+          }
         }
       } catch (err) {
-        console.warn('Mammoth docx parse warning:', err)
+        console.warn('Mammoth docx parse warning, tentando OfficeParser:', err)
       }
     }
 
-    // 3. Planilhas Excel (.xlsx, .xls)
+    // 4. Planilhas Excel (.xlsx, .xls)
     if (ext === 'xlsx' || ext === 'xls' || mimeType?.includes('spreadsheet')) {
       try {
         const workbook = XLSX.read(buffer, { type: 'buffer' })
@@ -39,47 +112,50 @@ export async function extractTextFromFile(
           const csvText = XLSX.utils.sheet_to_csv(sheet)
           fullText += `--- Planilha: ${sheetName} ---\n${csvText}\n\n`
         })
-        if (fullText.trim().length > 0) {
-          return fullText
+        const cleaned = cleanExtractedText(fullText)
+        if (cleaned.length >= 20) {
+          return cleaned
         }
       } catch (err) {
         console.warn('XLSX parse warning:', err)
       }
     }
 
-    // 4. Arquivos PDF
-    if (ext === 'pdf' || mimeType?.includes('pdf')) {
-      try {
-        const pdfParse = require('pdf-parse')
-        const data = await pdfParse(buffer)
-        if (data?.text && data.text.trim().length > 0) {
-          return data.text
-        }
-      } catch (err) {
-        console.warn('PDF-parse warning:', err)
-      }
-    }
-
-    // 5. Apresentações de Slides (.pptx) e formatos Office via officeparser
+    // 5. Apresentações de Slides (.pptx, .ppt) e outros formatos Office (.doc, .odt, .odp)
     try {
-      const officeParser = require('officeparser')
-      const text = await officeParser.parseOfficeAsync(buffer)
-      if (text && typeof text === 'string' && text.trim().length > 0) {
-        return text
+      const res = await parseOffice(buffer)
+      const officeText =
+        typeof res === 'string'
+          ? res
+          : typeof res?.toText === 'function'
+          ? res.toText()
+          : ''
+      const cleaned = cleanExtractedText(officeText)
+      if (cleaned.length >= 20) {
+        return cleaned
       }
     } catch (err) {
-      console.warn('Officeparser fallback warning:', err)
+      console.warn('OfficeParser generic parse warning:', err)
     }
 
-    // 6. Fallback final: decodificação limpa UTF-8 removendo caracteres nulos/binários
-    const rawText = buffer.toString('utf-8').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
-    if (rawText.trim().length > 30) {
-      return rawText.slice(0, 50000)
+    // 6. Fallback final: decodificação limpa UTF-8 para arquivos baseados em texto
+    const rawText = buffer.toString('utf-8')
+    const cleaned = cleanExtractedText(rawText)
+    // Apenas se contiver palavras legíveis e não for lixo binário
+    const printableRatio = (cleaned.match(/[a-zA-Z0-9áéíóúãõâêîôûàçÁÉÍÓÚÃÕÂÊÎÔÛÀÇ\s]/g) || []).length / (cleaned.length || 1)
+    if (cleaned.length >= 30 && printableRatio > 0.75) {
+      return cleaned
     }
 
-    return `Material "${fileName}" carregado com sucesso. Use as informações de título e descrição para guiar o contexto.`
+    throw new Error(
+      `Não foi possível extrair texto legível do arquivo "${fileName}". Certifique-se de que o arquivo não está protegido por senha, corrompido ou composto apenas por imagens escaneadas sem texto selecionável.`
+    )
   } catch (globalError: any) {
     console.error(`Erro ao processar arquivo ${fileName}:`, globalError)
-    return `Material: ${fileName}. Conteúdo textual registrado para consulta pedagógica.`
+    throw new Error(
+      globalError.message ||
+        `Falha ao extrair texto do arquivo "${fileName}". Tente salvar como PDF com texto selecionável ou colar o texto diretamente.`
+    )
   }
 }
+

@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Lightbulb,
   CheckCircle2,
+  AlignLeft,
 } from 'lucide-react'
 
 interface UploadMaterialDialogProps {
@@ -24,12 +25,14 @@ interface UploadMaterialDialogProps {
   initialClassroomId?: string
 }
 
-const MAX_FILE_SIZE_BYTES = 4.5 * 1024 * 1024 // 4.5 MB (limite ideal para Serverless e extração rápida)
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: UploadMaterialDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [classList, setClassList] = useState<{ id: string; name: string }[]>(classrooms)
+  const [uploadMode, setUploadMode] = useState<'file' | 'text'>('file')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [pastedText, setPastedText] = useState<string>('')
   const [fileSizeError, setFileSizeError] = useState<string | null>(null)
   const [selectedClassroom, setSelectedClassroom] = useState<string>(initialClassroomId || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -70,6 +73,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
     if (state?.success) {
       setIsOpen(false)
       setSelectedFile(null)
+      setPastedText('')
       setFileSizeError(null)
     }
   }, [state?.success])
@@ -80,7 +84,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
       const file = e.target.files[0]
       if (file.size > MAX_FILE_SIZE_BYTES) {
         setFileSizeError(
-          `O arquivo selecionado tem ${(file.size / (1024 * 1024)).toFixed(1)} MB. O tamanho máximo recomendado para provas interativas é de 4.5 MB. Selecione um resumo, capítulo ou documento mais compacto.`
+          `O arquivo selecionado tem ${(file.size / (1024 * 1024)).toFixed(1)} MB. O tamanho máximo permitido é de 10 MB.`
         )
         setSelectedFile(null)
         if (fileInputRef.current) fileInputRef.current.value = ''
@@ -107,6 +111,8 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
     return <FileText className="h-6 w-6 text-indigo-400" />
   }
 
+  const wordCount = pastedText.trim().length > 0 ? pastedText.trim().split(/\s+/).length : 0
+
   return (
     <>
       <Button
@@ -128,8 +134,8 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                   <UploadCloud className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Upload de Material Didático</h3>
-                  <p className="text-xs text-slate-400">Vincule o arquivo a uma turma para a IA gerar a prova</p>
+                  <h3 className="text-lg font-bold text-white">Cadastrar Material Didático</h3>
+                  <p className="text-xs text-slate-400">Vincule o conteúdo à turma para a IA gerar a prova com base nele</p>
                 </div>
               </div>
               <button
@@ -141,13 +147,41 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
               </button>
             </div>
 
-            {/* DICA PEDAGÓGICA SOBRE TAMANHO E FOCO */}
+            {/* SELETOR DE MODO: ARQUIVO OU TEXTO */}
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-slate-950/80 p-1.5 border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setUploadMode('file')}
+                className={`flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all ${
+                  uploadMode === 'file'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <UploadCloud className="h-4 w-4" />
+                Upload de Arquivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMode('text')}
+                className={`flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all ${
+                  uploadMode === 'text'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <AlignLeft className="h-4 w-4" />
+                Colar / Digitar Texto
+              </button>
+            </div>
+
+            {/* DICA PEDAGÓGICA */}
             <div className="mt-4 rounded-2xl border border-indigo-500/30 bg-indigo-950/30 p-3.5 text-xs text-indigo-200 flex items-start gap-2.5">
               <Lightbulb className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-bold text-indigo-300">💡 Dica para Provas Dinâmicas:</p>
+                <p className="font-bold text-indigo-300">💡 Ancoragem Estrita (Estilo NotebookLM):</p>
                 <p className="text-slate-300 text-[11px] leading-relaxed">
-                  Para gerar atividades rápidas (5 a 15 questões), envie resumos, capítulos da matéria ou slides da aula (<strong>até 4.5 MB</strong>). Arquivos focados geram perguntas mais assertivas e sobem instantaneamente!
+                  A IA lerá o texto do material e formulará perguntas, gabarito e justificativas baseados <strong>exclusivamente nas informações deste documento</strong>, sem alucinações.
                 </p>
               </div>
             </div>
@@ -166,7 +200,7 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                 </div>
               )}
 
-              {/* SELEÇÃO DINÂMICA DA SALA DE AULA VINCULADA */}
+              {/* SELEÇÃO DA SALA DE AULA */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
                   <School className="h-3.5 w-3.5 text-indigo-400" />
@@ -205,63 +239,87 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
 
               <div>
                 <Input
-                  label="Descrição (Opcional)"
+                  label="Descrição Breve (Opcional)"
                   name="description"
                   placeholder="Ex: Conteúdo trabalhado na aula de hoje"
                 />
               </div>
 
-              {/* SELEÇÃO DO ARQUIVO */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Arquivo da Aula (PDF, Word, Slides, Planilha ou TXT) *
-                </label>
+              {/* MODO 1: UPLOAD DE ARQUIVO */}
+              {uploadMode === 'file' && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Arquivo da Aula (PDF, Word, Slides, Planilha ou TXT) *
+                  </label>
 
-                <input
-                  type="file"
-                  name="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.txt,.md"
-                  className="hidden"
-                  id="material-file-upload"
-                  required
-                />
+                  <input
+                    type="file"
+                    name="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.csv,.txt,.md"
+                    className="hidden"
+                    id="material-file-upload"
+                  />
 
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
-                    selectedFile
-                      ? 'border-emerald-500 bg-emerald-950/20'
-                      : 'border-slate-700 bg-slate-950/60 hover:border-indigo-500/50 hover:bg-slate-950'
-                  }`}
-                >
-                  {selectedFile ? (
-                    <div className="flex items-center justify-center gap-3">
-                      {getFileIcon(selectedFile.name)}
-                      <div className="text-left">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-bold text-white truncate max-w-xs">{selectedFile.name}</p>
-                          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
+                      selectedFile
+                        ? 'border-emerald-500 bg-emerald-950/20'
+                        : 'border-slate-700 bg-slate-950/60 hover:border-indigo-500/50 hover:bg-slate-950'
+                    }`}
+                  >
+                    {selectedFile ? (
+                      <div className="flex items-center justify-center gap-3">
+                        {getFileIcon(selectedFile.name)}
+                        <div className="text-left">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-bold text-white truncate max-w-xs">{selectedFile.name}</p>
+                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                          </div>
+                          <p className="text-xs text-emerald-400 font-mono font-semibold">
+                            {formatFileSize(selectedFile.size)} • Pronto para extração
+                          </p>
                         </div>
-                        <p className="text-xs text-emerald-400 font-mono font-semibold">
-                          {formatFileSize(selectedFile.size)} • Pronto para envio
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <UploadCloud className="mx-auto h-8 w-8 text-indigo-400" />
+                        <p className="text-sm font-semibold text-slate-200">
+                          Clique para selecionar o arquivo da aula
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          PDF, Word (.docx), Slides (.pptx), Planilhas (.xlsx) ou TXT (Até 10 MB)
                         </p>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <UploadCloud className="mx-auto h-8 w-8 text-indigo-400" />
-                      <p className="text-sm font-semibold text-slate-200">
-                        Toque para selecionar o arquivo da aula
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        PDF, Word (.docx), Slides (.pptx), Planilhas ou TXT (Recomendado: até 4.5 MB)
-                      </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* MODO 2: TEXTO OU RESUMO DIRETO */}
+              {uploadMode === 'text' && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                      Texto Didático / Resumo da Aula *
+                    </label>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {wordCount} palavras • {pastedText.length} caracteres
+                    </span>
+                  </div>
+                  <textarea
+                    name="content_text"
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    rows={7}
+                    required={uploadMode === 'text'}
+                    placeholder="Cole aqui o texto completo da aula, capítulo de livro, anotações de aula ou resumo que a IA usará para formular as questões..."
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 p-3.5 text-xs text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none font-mono leading-relaxed"
+                  />
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <Button
@@ -278,10 +336,14 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
                   variant="primary"
                   size="md"
                   isLoading={isPending}
-                  disabled={!selectedFile || classList.length === 0}
+                  disabled={
+                    classList.length === 0 ||
+                    (uploadMode === 'file' && !selectedFile) ||
+                    (uploadMode === 'text' && pastedText.trim().length < 20)
+                  }
                 >
                   <Sparkles className="h-4 w-4 mr-1" />
-                  Enviar e Extrair Conteúdo
+                  {isPending ? 'Indexando Material...' : 'Salvar e Indexar para IA'}
                 </Button>
               </div>
             </form>
@@ -291,3 +353,4 @@ export function UploadMaterialDialog({ classrooms = [], initialClassroomId }: Up
     </>
   )
 }
+

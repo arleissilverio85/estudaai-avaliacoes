@@ -5,7 +5,7 @@ import { updateMaterial, ActionResponse } from '@/app/(dashboard)/teacher/action
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Edit2, BookOpen, X, Check, School, AlertCircle } from 'lucide-react'
+import { Edit2, BookOpen, X, Check, School, AlertCircle, FileText, Sparkles } from 'lucide-react'
 import { MaterialProcessingStatus } from '@/types/database.types'
 
 interface EditMaterialDialogProps {
@@ -14,6 +14,7 @@ interface EditMaterialDialogProps {
     title: string
     description: string | null
     file_name: string | null
+    content_text?: string | null
     classroom_id?: string | null
     processing_status: MaterialProcessingStatus
   }
@@ -24,6 +25,7 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
   const [isOpen, setIsOpen] = useState(false)
   const [classList, setClassList] = useState<{ id: string; name: string }[]>(classrooms)
   const [classroomId, setClassroomId] = useState(material.classroom_id || '')
+  const [contentText, setContentText] = useState(material.content_text || '')
   const [status, setStatus] = useState<MaterialProcessingStatus>(material.processing_status)
   const [state, formAction, isPending] = useActionState<ActionResponse, FormData>(
     updateMaterial,
@@ -33,6 +35,7 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
   // Carregar salas dinamicamente do Supabase para garantir que sempre esteja atualizado
   useEffect(() => {
     if (isOpen) {
+      setContentText(material.content_text || '')
       const supabase = createClient()
       supabase
         .from('classrooms')
@@ -44,13 +47,15 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
           }
         })
     }
-  }, [isOpen])
+  }, [isOpen, material.content_text])
 
   useEffect(() => {
     if (state?.success) {
       setIsOpen(false)
     }
   }, [state?.success])
+
+  const wordCount = contentText.trim().length > 0 ? contentText.trim().split(/\s+/).length : 0
 
   return (
     <>
@@ -64,15 +69,15 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                   <BookOpen className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Editar Material</h3>
-                  <p className="text-xs text-slate-400">Atualize as informações e a turma vinculada</p>
+                  <h3 className="text-lg font-bold text-white">Editar Material Didático</h3>
+                  <p className="text-xs text-slate-400">Atualize os dados e o conteúdo textual que alimenta a IA</p>
                 </div>
               </div>
               <button
@@ -95,7 +100,7 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
                 </div>
               )}
 
-              {/* SELEÇÃO DINÂMICA DA SALA DE AULA */}
+              {/* SELEÇÃO DA SALA DE AULA */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center gap-1.5">
                   <School className="h-3.5 w-3.5 text-indigo-400" />
@@ -140,28 +145,54 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
                 />
               </div>
 
-              <div>
-                <Input
-                  label="Nome do Arquivo"
-                  name="file_name"
-                  defaultValue={material.file_name || 'documento.pdf'}
+              {/* CONTEÚDO DIDÁTICO INDEXADO (PARA A IA) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                    Conteúdo Didático Indexado para a IA (Texto Fonte)
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {wordCount} palavras • {contentText.length} caracteres
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Este é o texto exato que o GPT-4o-mini consulta para formular as questões com ancoragem estrita (estilo NotebookLM).
+                </p>
+                <textarea
+                  name="content_text"
+                  value={contentText}
+                  onChange={(e) => setContentText(e.target.value)}
+                  rows={8}
+                  placeholder="Cole ou edite o conteúdo textual deste material..."
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 p-3.5 text-xs text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none font-mono leading-relaxed"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Status de Processamento
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as MaterialProcessingStatus)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="ready">Pronto (ready)</option>
-                  <option value="pending">Pendente (pending)</option>
-                  <option value="processing">Processando (processing)</option>
-                  <option value="error">Erro (error)</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Input
+                    label="Nome do Arquivo"
+                    name="file_name"
+                    defaultValue={material.file_name || 'documento.pdf'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                    Status de Processamento
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as MaterialProcessingStatus)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="ready">Pronto (ready)</option>
+                    <option value="pending">Pendente (pending)</option>
+                    <option value="processing">Processando (processing)</option>
+                    <option value="error">Erro (error)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
@@ -191,3 +222,4 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
     </>
   )
 }
+

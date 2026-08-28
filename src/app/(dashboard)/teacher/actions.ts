@@ -130,13 +130,17 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
   const description = formData.get('description') as string | null
   const classroom_id = formData.get('classroom_id') as string | null
   const file = formData.get('file') as File | null
+  const rawContentText = formData.get('content_text') as string | null
 
   if (!title || title.trim().length === 0) {
     return { error: 'O título do material é obrigatório.' }
   }
 
-  if (!file || file.size === 0) {
-    return { error: 'Selecione um arquivo válido (PDF, Word, Slides, Planilha ou TXT).' }
+  const hasFile = Boolean(file && file.size > 0)
+  const hasDirectText = Boolean(rawContentText && rawContentText.trim().length >= 20)
+
+  if (!hasFile && !hasDirectText) {
+    return { error: 'Envie um arquivo válido (PDF, Word, Slides, Planilha, TXT) ou digite/cole o texto do material diretamente.' }
   }
 
   const supabase = await createClient()
@@ -145,55 +149,78 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
   if (!user) return { error: 'Não autenticado.' }
 
   try {
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const storagePath = `${user.id}/${Date.now()}_${sanitizedFileName}`
-
-    // Garantir que o perfil do professor existe no banco para evitar violação de FK
-    await (supabase.from('profiles') as any).upsert({
-      id: user.id,
-      name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Professor',
-      email: user.email || '',
-      role: 'teacher',
-    }, { onConflict: 'id' })
-
-    // 1. Upload para o Supabase Storage (bucket materials se configurado)
-    let finalStoragePath: string | null = storagePath
-    try {
-      const { error: storageError } = await supabase.storage
-        .from('materials')
-        .upload(storagePath, buffer, {
-          contentType: file.type || 'application/octet-stream',
-          upsert: true,
-        })
-
-      if (storageError) {
-        console.warn('Aviso de storage (bucket materials):', storageError.message)
-      }
-    } catch (stErr) {
-      console.warn('Exceção ao enviar para o storage:', stErr)
-    }
-
-    // 2. Extração de texto usando os parsers multiformato ultra-resilientes
+    let finalStoragePath: string | null = null
     let extractedText = ''
-    try {
-      extractedText = await extractTextFromFile(buffer, file.name, file.type)
-    } catch (parseErr: any) {
-      console.warn('Falha na extração de texto:', parseErr)
-      extractedText = `Arquivo: ${file.name}. Material didático carregado para apoio às avaliações.`
+    let fileName = hasFile ? file!.name : 'resumo_texto.txt'
+    let fileType = hasFile ? (file!.type || 'application/octet-stream') : 'text/plain'
+    let fileSize = hasFile ? file!.size : Buffer.byteLength(rawContentText || '', 'utf8')
+
+    // 1. Processar arquivo se enviado
+    if (hasFile && file) {
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `${user.id}/${Date.now()}_${sanitizedFileName}`
+      finalStoragePath = storagePath
+
+      // Garantir perfil do professor
+      await (supabase.from('profiles') as any).upsert({
+        id: user.id,
+        name: user.user_metadata?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Professor',
+        email: user.email || '',
+        role: 'teacher',
+      }, { onConflict: 'id' })
+
+      // Upload para Supabase Storage (se bucket existir)
+      try {
+        const { error: storageError } = await supabase.storage
+          .from('materials')
+          .upload(storagePath, buffer, {
+            contentType: file.type || 'application/octet-stream',
+            upsert: true,
+          })
+
+        if (storageError) {
+          console.warn('Aviso de storage (bucket materials):', storageError.message)
+        }
+      } catch (stErr) {
+        console.warn('Exceção ao enviar para o storage:', stErr)
+      }
+
+      // Extração de texto real
+      try {
+        extractedText = await extractTextFromFile(buffer, file.name, file.type)
+      } catch (parseErr: any) {
+        console.error('Falha na extração de texto:', parseErr)
+        // Se o professor também forneceu texto manual, usa o texto manual
+        if (hasDirectText && rawContentText) {
+          extractedText = rawContentText.trim()
+        } else {
+          return {
+            error: parseErr.message || `Não foi possível extrair texto do arquivo "${file.name}". Certifique-se de que não é uma imagem escaneada sem OCR ou cole o texto do material diretamente.`,
+          }
+        }
+      }
+    } else if (hasDirectText && rawContentText) {
+      extractedText = rawContentText.trim()
     }
 
-    // 3. Persistência na tabela materials com a sala vinculada
+    if (!extractedText || extractedText.trim().length < 20) {
+      return {
+        error: 'O conteúdo didático extraído é insuficiente para alimentar a IA (mínimo de 20 caracteres com conteúdo real).',
+      }
+    }
+
+    // 2. Persistência na tabela materials com a sala vinculada
     const { data: materialData, error: dbError } = await (supabase.from('materials') as any)
       .insert({
         teacher_id: user.id,
         classroom_id: classroom_id && classroom_id.trim().length > 0 ? classroom_id : null,
         title: title.trim(),
         description: description?.trim() || null,
-        file_name: file.name,
-        file_type: file.type || 'application/octet-stream',
-        file_size: file.size,
+        file_name: fileName,
+        file_type: fileType,
+        file_size: fileSize,
         file_path: finalStoragePath,
         content_text: extractedText,
         processing_status: 'ready' as MaterialProcessingStatus,
@@ -207,17 +234,18 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
 
     revalidatePath('/teacher/materials')
     revalidatePath('/teacher/dashboard')
+    revalidatePath('/teacher/quizzes')
     if (classroom_id) {
       revalidatePath(`/teacher/classrooms/${classroom_id}`)
     }
     return {
       success: true,
-      message: `Material "${title}" enviado e vinculado à turma com sucesso!`,
+      message: `Material "${title}" processado com sucesso! Conteúdo indexado para geração com IA.`,
       data: materialData,
     }
   } catch (err: any) {
-    console.error('Erro no upload de material:', err)
-    return { error: 'Falha no processamento do arquivo: ' + err.message }
+    console.error('Erro no processamento do material:', err)
+    return { error: 'Falha no processamento: ' + err.message }
   }
 }
 
@@ -227,6 +255,7 @@ export async function createMaterial(prevState: ActionResponse | null, formData:
   const classroom_id = formData.get('classroom_id') as string | null
   const file_name = formData.get('file_name') as string | null
   const file_type = formData.get('file_type') as string | null
+  const content_text = formData.get('content_text') as string | null
 
   if (!title || title.trim().length === 0) {
     return { error: 'O título do material é obrigatório.' }
@@ -246,6 +275,7 @@ export async function createMaterial(prevState: ActionResponse | null, formData:
       file_name: file_name?.trim() || 'documento_base.pdf',
       file_type: file_type || 'application/pdf',
       file_path: null,
+      content_text: content_text?.trim() || null,
       processing_status: 'ready' as MaterialProcessingStatus,
     })
     .select()
@@ -256,6 +286,7 @@ export async function createMaterial(prevState: ActionResponse | null, formData:
   }
 
   revalidatePath('/teacher/materials')
+  revalidatePath('/teacher/quizzes')
   if (classroom_id) {
     revalidatePath(`/teacher/classrooms/${classroom_id}`)
   }
@@ -285,6 +316,7 @@ export async function updateMaterial(prevState: ActionResponse | null, formData:
   const title = formData.get('title') as string
   const description = formData.get('description') as string | null
   const file_name = formData.get('file_name') as string | null
+  const content_text = formData.get('content_text') as string | null
   const processing_status = (formData.get('processing_status') as MaterialProcessingStatus) || 'ready'
 
   if (!materialId || !title || title.trim().length === 0) {
@@ -296,14 +328,20 @@ export async function updateMaterial(prevState: ActionResponse | null, formData:
 
   if (!user) return { error: 'Não autenticado.' }
 
+  const updatePayload: any = {
+    classroom_id: classroom_id && classroom_id.trim().length > 0 ? classroom_id : null,
+    title: title.trim(),
+    description: description?.trim() || null,
+    file_name: file_name?.trim() || 'documento_base.pdf',
+    processing_status,
+  }
+
+  if (content_text !== null) {
+    updatePayload.content_text = content_text.trim()
+  }
+
   const { data, error } = await (supabase.from('materials') as any)
-    .update({
-      classroom_id: classroom_id && classroom_id.trim().length > 0 ? classroom_id : null,
-      title: title.trim(),
-      description: description?.trim() || null,
-      file_name: file_name?.trim() || 'documento_base.pdf',
-      processing_status,
-    })
+    .update(updatePayload)
     .eq('id', materialId)
     .eq('teacher_id', user.id)
     .select()
@@ -314,6 +352,7 @@ export async function updateMaterial(prevState: ActionResponse | null, formData:
   }
 
   revalidatePath('/teacher/materials')
+  revalidatePath('/teacher/quizzes')
   return { success: true, message: 'Material atualizado com sucesso!', data }
 }
 
@@ -344,11 +383,12 @@ export async function deleteMaterial(materialId: string): Promise<ActionResponse
   }
 
   revalidatePath('/teacher/materials')
+  revalidatePath('/teacher/quizzes')
   return { success: true, message: 'Material removido com sucesso.' }
 }
 
 /* ==============================================================================
- * 3. AVALIAÇÕES (QUIZZES) & GERAÇÃO POR IA (GPT-4o-mini)
+ * 3. AVALIAÇÕES (QUIZZES) & GERAÇÃO POR IA (GPT-4o-mini / NOTEBOOK LM STYLE)
  * ============================================================================== */
 
 export async function generateQuizWithAI(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
@@ -385,15 +425,25 @@ export async function generateQuizWithAI(prevState: ActionResponse | null, formD
     return { error: 'Material didático não encontrado.' }
   }
 
-  if (!material.content_text || material.content_text.trim().length < 20) {
-    return { error: 'O material selecionado não possui conteúdo textual suficiente extraído para alimentar a IA.' }
+  const content = material.content_text?.trim() || ''
+
+  // Detecção de materiais corrompidos por versões anteriores com texto fictício
+  const isCorruptedPlaceholder =
+    content.startsWith('Material "') &&
+    (content.includes('carregado com sucesso. Use as informações') || content.includes('Conteúdo textual registrado')) &&
+    content.length < 200
+
+  if (!content || content.length < 20 || isCorruptedPlaceholder) {
+    return {
+      error: `O material "${material.title}" não possui texto didático extraído suficiente. Acesse a aba Materiais, clique em Editar e cole o texto ou reenvie o arquivo da aula para que a IA possa formular a avaliação com base no conteúdo real.`,
+    }
   }
 
   try {
     // 2. Chamar o gerador GPT-4o-mini com o material exclusivo
     const aiResult = await generateQuizWithGPT4oMini({
       materialTitle: material.title,
-      materialContent: material.content_text,
+      materialContent: content,
       questionType: question_type,
       questionCount,
       difficulty,

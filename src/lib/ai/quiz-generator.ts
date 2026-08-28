@@ -12,15 +12,15 @@ export const GeneratedOptionSchema = z.object({
 })
 
 export const GeneratedQuestionSchema = z.object({
-  question_text: z.string().describe('Enunciado claro, bem redigido e contextualizado da questão'),
+  question_text: z.string().describe('Enunciado claro, bem redigido e contextualizado da questão com base no material'),
   question_type: z.enum(['multiple_choice', 'true_false', 'mixed', 'essay']).describe('Tipo da questão'),
-  explanation: z.string().describe('Justificativa pedagógica em linguagem humana explicando porque a resposta está certa com base no material'),
+  explanation: z.string().describe('Justificativa pedagógica em linguagem humana explicando porque a resposta está certa citando/referenciando o material'),
   options: z.array(GeneratedOptionSchema).min(2).max(4).describe('Lista de alternativas com distribuição sortida da resposta correta'),
 })
 
 export const GeneratedQuizResponseSchema = z.object({
   title: z.string().describe('Título elegante e formatado para a avaliação'),
-  summary: z.string().describe('Resumo pedagógico do conteúdo cobrado na avaliação'),
+  summary: z.string().describe('Resumo pedagógico do conteúdo didático cobrado na avaliação'),
   questions: z.array(GeneratedQuestionSchema).describe('Lista de questões formatadas'),
 })
 
@@ -69,7 +69,7 @@ export function shuffleOptions<T>(options: T[]): T[] {
 }
 
 /* ==============================================================================
- * 3. GERADOR COM STRUCTURED OUTPUTS (GPT-4o-mini)
+ * 3. GERADOR COM ESTRITA ANCORAGEM AO MATERIAL DIDÁTICO (NOTEBOOK LM STYLE)
  * ============================================================================== */
 
 export async function generateQuizWithGPT4oMini(params: GenerateQuizParams): Promise<GeneratedQuizResponse> {
@@ -79,43 +79,58 @@ export async function generateQuizWithGPT4oMini(params: GenerateQuizParams): Pro
     throw new Error('O conteúdo do material é insuficiente para gerar questões.')
   }
 
-  const trimmedContent = materialContent.slice(0, 50000)
+  // Suporte a até 80.000 caracteres de contexto didático (amplo espaço dentro da janela do GPT-4o-mini)
+  const trimmedContent = materialContent.slice(0, 80000)
 
   const difficultyDesc = {
-    easy: 'FÁCIL: Conceitos fundamentais, definições diretas e fatos explícitos do texto.',
-    medium: 'MÉDIO: Interpretação, aplicações práticas e correlações entre conceitos.',
-    hard: 'DIFÍCIL: Análise crítica profunda, cenários práticos e distinções detalhadas.',
+    easy: 'FÁCIL: Perguntas diretas sobre conceitos explícitos, definições, termos-chave e afirmações literais presentes no texto do professor.',
+    medium: 'MÉDIO: Interpretação, aplicações dos conceitos expostos e correlações diretas entre tópicos ensinados no material.',
+    hard: 'DIFÍCIL: Análise aprofundada, cenários reflexivos e distinção sutil entre conceitos detalhados no material fornecido.',
   }[difficulty]
 
   const typeFormatInstructions = {
-    multiple_choice: 'Gere questões de MÚLTIPLA ESCOLHA com 4 alternativas distintas cada. IMPORTANTE: Distribua a alternativa correta de forma SORTIDA e VARIADA entre as diferentes posições (não coloque a resposta certa sempre na mesma posição).',
-    true_false: 'Gere questões no formato VERDADEIRO OU FALSO. O enunciado deve ser uma assertiva e haverá exatamente 2 opções: "Verdadeiro" e "Falso", com a correta indicada e a justificativa clara.',
-    mixed: 'Gere uma mescla balanceada entre questões de Múltipla Escolha e Verdadeiro ou Falso, com posições sortidas da resposta correta.',
+    multiple_choice: 'Gere questões de MÚLTIPLA ESCOLHA com exatamente 4 alternativas distintas (A, B, C, D) por questão. Apenas 1 alternativa é correta (is_correct: true) e 3 são distratores verossímeis baseados no contexto do material.',
+    true_false: 'Gere questões no formato VERDADEIRO OU FALSO. O enunciado deve ser uma assertiva extraída do material e haverá exatamente 2 opções: "Verdadeiro" e "Falso", com a correta indicada e a justificativa fundamentada no texto.',
+    mixed: 'Gere uma mescla balanceada entre questões de Múltipla Escolha (4 opções) e Verdadeiro ou Falso (2 opções), todas rigorosamente embasadas no material didático.',
   }[questionType]
 
-  const systemPrompt = `Você é um professor e especialista em avaliação educacional de alto nível.
-Sua missão é produzir uma avaliação com exatamente ${questionCount} questões formuladas para seres humanos (professores e alunos), com redação impecável, elegante e profissional em Português do Brasil.
+  const systemPrompt = `Você é o assistente pedagógico de avaliações do EstudaAí com ANCORAGEM ESTRITA AO MATERIAL DIDÁTICO (Strict Grounding - Estilo NotebookLM).
+Sua missão é produzir uma prova/quiz com exatamente ${questionCount} questões formuladas com redação acadêmica impecável, elegante e profissional em Português do Brasil.
 
-DIRETRIZES FUNDAMENTAIS:
-1. RESTRIÇÃO ABSOLUTA AO MATERIAL: Use APENAS o conteúdo didático fornecido. Nunca invente regras ou use fontes externas.
-2. DISTRIBUIÇÃO SORTIDA DAS RESPOSTAS: A alternativa correta (is_correct = true) DEVE ser sorteada e variar aleatoriamente entre todas as posições possíveis (A, B, C, D). NUNCA coloque a resposta correta sempre na primeira posição!
-3. FORMATO HUMANO E LIMPO: 
-   - NÃO inclua prefixos como "A)", "B)", "1.", "Questão 1:" nos textos das opções ou enunciados.
-   - Enunciados devem ser claros e objetivos.
-   - Cada questão de Múltipla Escolha deve conter 4 opções claras e verossímeis.
-   - Cada questão de Verdadeiro/Falso deve conter 2 opções ("Verdadeiro" e "Falso").
-4. GABARITO & JUSTIFICATIVA: Cada questão deve ter exatamente UMA alternativa com is_correct = true e uma justificativa pedagógica no campo "explanation" explicando porque aquela alternativa é a correta com base no texto.
-5. DIFICULDADE ALVO: ${difficultyDesc}
-6. FORMATO DAS QUESTÕES: ${typeFormatInstructions}`
+DIRETRIZES FUNDAMENTAIS DE ANCORAGEM (NOTEBOOK LM STYLE):
+1. ANCORAGEM ABSOLUTA (ZERO ALUCINAÇÃO):
+   - Cada pergunta, assertiva, alternativa correta e distrator DEVE ser formulado e derivado ESTRITAMENTE do texto do material fornecido pelo professor.
+   - NUNCA invente informações, não presuma dados externos e não use fatos que não constem no texto, mesmo que sejam de conhecimento geral.
+   - Se o material não tratar de determinado assunto, NÃO crie questões sobre ele.
 
-  const userPrompt = `MATERIAL DIDÁTICO BASE:
+2. COBERTURA BALANCEADA DO TEXTO:
+   - Distribua as questões por diferentes seções, conceitos e parágrafos do material didático (início, meio e fim do texto), garantindo uma avaliação completa e representativa do documento.
+
+3. JUSTIFICATIVA PEDAGÓGICA COM CITAÇÃO (EXPLANATION):
+   - No campo "explanation", explique detalhadamente por que a alternativa correta é o gabarito, referenciando e citando o trecho ou conceito do material didático que comprova a resposta.
+
+4. QUALIDADE DAS ALTERNATIVAS E DISTRATORES:
+   - Apenas 1 alternativa por questão deve ser verdadeira (is_correct = true).
+   - Os distratores (respostas incorretas) devem ser plausíveis dentro do tema da aula, porém conceitualmente errados segundo o que foi explicado no texto base.
+
+5. FORMATO LIMPO:
+   - NUNCA inclua prefixos como "A)", "B)", "1.", "Questão 1:" ou "Pergunta:" nos textos de enunciados ou opções.
+   - Para Múltipla Escolha: 4 opções claras.
+   - Para Verdadeiro/Falso: 2 opções ("Verdadeiro" e "Falso").
+
+6. NÍVEL DE DIFICULDADE: ${difficultyDesc}
+7. FORMATO REQUISITADO: ${typeFormatInstructions}`
+
+  const userPrompt = `MATERIAL DIDÁTICO DO PROFESSOR (FONTE EXCLUSIVA):
+======================================================================
 Título: "${materialTitle}"
-Conteúdo:
+Conteúdo Didático:
 """
 ${trimmedContent}
 """
+======================================================================
 
-Elabore agora exatamente ${questionCount} questões de nível ${difficulty.toUpperCase()} com alternativas sortidas.`
+Com base ESTRITAMENTE no conteúdo didático acima, elabore agora a avaliação com exatamente ${questionCount} questões de nível ${difficulty.toUpperCase()}.`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -125,7 +140,7 @@ Elabore agora exatamente ${questionCount} questões de nível ${difficulty.toUpp
         { role: 'user', content: userPrompt },
       ],
       response_format: zodResponseFormat(GeneratedQuizResponseSchema, 'educational_quiz'),
-      temperature: 0.4, // Aumentada ligeiramente para maior variabilidade e aleatoriedade
+      temperature: 0.3, // Temperatura baixa para máxima fidelidade e ancoragem ao texto fonte
     })
 
     const rawContent = completion.choices[0]?.message?.content
@@ -137,10 +152,10 @@ Elabore agora exatamente ${questionCount} questões de nível ${difficulty.toUpp
     const parsedJson = JSON.parse(rawContent)
     const validated = GeneratedQuizResponseSchema.parse(parsedJson)
 
-    // Pós-processamento: higienização + embaralhamento determinístico das alternativas de múltipla escolha
+    // Pós-processamento: higienização + embaralhamento aleatório (Fisher-Yates) das alternativas
     const sanitizedQuiz: GeneratedQuizResponse = {
       title: cleanHumanText(validated.title) || `Avaliação - ${materialTitle}`,
-      summary: cleanHumanText(validated.summary || '') || `Avaliação gerada com ${validated.questions.length} questões.`,
+      summary: cleanHumanText(validated.summary || '') || `Avaliação gerada a partir do material "${materialTitle}" com ${validated.questions.length} questões.`,
       questions: validated.questions.map((q, idx: number) => {
         const cleanedOptions = q.options.map((opt) => ({
           option_text: cleanHumanText(opt.option_text),
@@ -167,3 +182,4 @@ Elabore agora exatamente ${questionCount} questões de nível ${difficulty.toUpp
     throw new Error(`Falha ao gerar avaliação formatada: ${error.message}`)
   }
 }
+
