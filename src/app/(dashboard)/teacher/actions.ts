@@ -4,8 +4,6 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { generateJoinCode } from '@/lib/utils'
-import { extractTextFromFile } from '@/lib/parsers/extract-text'
-import { generateQuizWithGPT4oMini } from '@/lib/ai/quiz-generator'
 import { QuizQuestionType, QuizStatus, MaterialProcessingStatus } from '@/types/database.types'
 
 export type ActionResponse = {
@@ -212,6 +210,7 @@ export async function uploadAndProcessMaterial(prevState: ActionResponse | null,
 
       // Extração de texto real
       try {
+        const { extractTextFromFile } = await import('@/lib/parsers/extract-text')
         extractedText = await extractTextFromFile(buffer, file.name, file.type)
       } catch (parseErr: any) {
         console.error('Falha na extração de texto:', parseErr)
@@ -463,7 +462,8 @@ export async function generateQuizWithAI(prevState: ActionResponse | null, formD
   }
 
   try {
-    // 2. Chamar o gerador GPT-4o-mini com o material exclusivo
+    // 2. Chamar o gerador GPT-4o-mini com o material exclusivo (Dynamic Import)
+    const { generateQuizWithGPT4oMini } = await import('@/lib/ai/quiz-generator')
     const aiResult = await generateQuizWithGPT4oMini({
       materialTitle: material.title,
       materialContent: content,

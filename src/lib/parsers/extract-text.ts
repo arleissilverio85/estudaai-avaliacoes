@@ -1,8 +1,3 @@
-import * as XLSX from 'xlsx'
-import mammoth from 'mammoth'
-import { PDFParse } from 'pdf-parse'
-import { parseOffice } from 'officeparser'
-
 /**
  * Remove caracteres de controle estranhos e normaliza quebras de linha
  */
@@ -27,7 +22,6 @@ export async function extractTextFromFile(
   mimeType?: string
 ): Promise<string> {
   const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  let extracted = ''
 
   try {
     // 1. Arquivos de Texto Puro / Markdown / JSON / CSV
@@ -49,8 +43,9 @@ export async function extractTextFromFile(
 
     // 2. Arquivos PDF (.pdf)
     if (ext === 'pdf' || mimeType?.includes('pdf')) {
-      // 2.1 Tentativa primária com PDFParse v2
+      // 2.1 Tentativa primária com PDFParse v2 (Dynamic Import)
       try {
+        const { PDFParse } = await import('pdf-parse')
         const parser = new PDFParse({ data: buffer })
         const data = await parser.getText()
         try {
@@ -69,8 +64,9 @@ export async function extractTextFromFile(
         console.warn('PDFParse falhou, tentando fallback com OfficeParser:', pdfErr)
       }
 
-      // 2.2 Fallback de PDF via OfficeParser
+      // 2.2 Fallback de PDF via OfficeParser (Dynamic Import)
       try {
+        const { parseOffice } = await import('officeparser')
         const officeRes = await parseOffice(buffer)
         const officeText =
           typeof officeRes === 'string'
@@ -90,6 +86,8 @@ export async function extractTextFromFile(
     // 3. Documentos Word (.docx)
     if (ext === 'docx' || mimeType?.includes('wordprocessingml.document')) {
       try {
+        const mammothModule = await import('mammoth')
+        const mammoth = (mammothModule as any).default || mammothModule
         const result = await mammoth.extractRawText({ buffer })
         if (result?.value) {
           const cleaned = cleanExtractedText(result.value)
@@ -105,6 +103,7 @@ export async function extractTextFromFile(
     // 4. Planilhas Excel (.xlsx, .xls)
     if (ext === 'xlsx' || ext === 'xls' || mimeType?.includes('spreadsheet')) {
       try {
+        const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'buffer' })
         let fullText = ''
         workbook.SheetNames.forEach((sheetName) => {
@@ -123,6 +122,7 @@ export async function extractTextFromFile(
 
     // 5. Apresentações de Slides (.pptx, .ppt) e outros formatos Office (.doc, .odt, .odp)
     try {
+      const { parseOffice } = await import('officeparser')
       const res = await parseOffice(buffer)
       const officeText =
         typeof res === 'string'
@@ -141,7 +141,6 @@ export async function extractTextFromFile(
     // 6. Fallback final: decodificação limpa UTF-8 para arquivos baseados em texto
     const rawText = buffer.toString('utf-8')
     const cleaned = cleanExtractedText(rawText)
-    // Apenas se contiver palavras legíveis e não for lixo binário
     const printableRatio = (cleaned.match(/[a-zA-Z0-9áéíóúãõâêîôûàçÁÉÍÓÚÃÕÂÊÎÔÛÀÇ\s]/g) || []).length / (cleaned.length || 1)
     if (cleaned.length >= 30 && printableRatio > 0.75) {
       return cleaned
@@ -158,4 +157,5 @@ export async function extractTextFromFile(
     )
   }
 }
+
 
