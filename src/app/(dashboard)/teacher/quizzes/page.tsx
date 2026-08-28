@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { FileCheck, Sparkles } from 'lucide-react'
-import { CreateQuizForm } from '@/components/create-quiz-form'
 import { QuizCard } from '@/components/quiz-card'
 import { GenerateQuizAiDialog } from '@/components/generate-quiz-ai-dialog'
 
@@ -65,7 +64,7 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
             Avaliações e Provas
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Gere avaliações com IA baseadas em seus materiais didáticos ou crie manualmente.
+            Gere avaliações inteligentes formuladas com IA estritamente a partir dos materiais didáticos da turma.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -83,15 +82,12 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
           <Sparkles className="h-4 w-4" />
         </div>
         <div className="text-xs space-y-1">
-          <p className="font-bold text-white">Geração de Questões com GPT-4o-mini</p>
+          <p className="font-bold text-white">Geração de Questões com IA (Grounding Estrito)</p>
           <p className="text-indigo-300/80 leading-relaxed">
             Clique no botão <strong>Gerar Prova com IA</strong> acima para criar entre 5 e 15 questões (Múltipla Escolha ou Verdadeiro/Falso) com gabarito e justificativa pedagógica, utilizando exclusivamente o material que você enviou.
           </p>
         </div>
       </div>
-
-      {/* FORMULÁRIO MANUAL OU ALTERNATIVO */}
-      <CreateQuizForm classrooms={classrooms} initialClassroomId={classroom_id} />
 
       {/* LISTA DE AVALIAÇÕES */}
       <div className="space-y-4">
@@ -107,7 +103,7 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
             <FileCheck className="mx-auto h-12 w-12 text-slate-600" />
             <h3 className="mt-3 text-base font-bold text-white">Nenhuma avaliação cadastrada</h3>
             <p className="mt-1 text-xs text-slate-400">
-              Gere uma avaliação com IA acima ou crie um rascunho manual.
+              Clique no botão <strong>Gerar Prova com IA</strong> acima para criar sua primeira avaliação.
             </p>
           </div>
         ) : (
@@ -121,3 +117,4 @@ export default async function TeacherQuizzesPage({ searchParams }: Props) {
     </div>
   )
 }
+
