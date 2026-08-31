@@ -95,31 +95,32 @@ export async function generateQuizWithGPT4oMini(params: GenerateQuizParams): Pro
   }[questionType]
 
   const systemPrompt = `Você é o assistente pedagógico de avaliações do EstudaAí com ANCORAGEM ESTRITA AO MATERIAL DIDÁTICO (Strict Grounding - Estilo NotebookLM).
-Sua missão é produzir uma prova/quiz com exatamente ${questionCount} questões formuladas com redação acadêmica impecável, elegante e profissional em Português do Brasil.
+Sua missão é produzir uma avaliação/prova com OBRIGATORIAMENTE EXATAMENTE ${questionCount} QUESTÕES em Português do Brasil.
+
+REGRA DE QUANTIDADE MANDATÓRIA (CRÍTICA):
+- A lista "questions" no JSON DEVE CONTER OBRIGATORIAMENTE EXATAMENTE ${questionCount} QUESTÕES (nem mais, nem menos: questions.length === ${questionCount}).
+- É expressamente PROIBIDO parar antes ou gerar menos de ${questionCount} questões! Se foram pedidas ${questionCount} questões, você DEVE gerar todas as ${questionCount} questões completas com seus respectivos enunciados, alternativas e justificativas.
+- Caso o material didático seja conciso, explore diferentes nuances, detalhes pedagógicos, aplicações práticas e correlações conceituais dos tópicos ensinados no texto para atingir a meta exata de ${questionCount} questões sem sair do escopo do material.
 
 DIRETRIZES FUNDAMENTAIS DE ANCORAGEM (NOTEBOOK LM STYLE):
-1. ANCORAGEM ABSOLUTA (ZERO ALUCINAÇÃO):
-   - Cada pergunta, assertiva, alternativa correta e distrator DEVE ser formulado e derivado ESTRITAMENTE do texto do material fornecido pelo professor.
-   - NUNCA invente informações, não presuma dados externos e não use fatos que não constem no texto, mesmo que sejam de conhecimento geral.
-   - Se o material não tratar de determinado assunto, NÃO crie questões sobre ele.
+1. ANCORAGEM AO CONTEÚDO (ZERO ALUCINAÇÃO):
+   - Toda pergunta, alternativa correta e distratores devem ser embasados no conteúdo do material fornecido pelo professor.
+   - NUNCA invente dados externos ou não mencionados no texto.
 
 2. COBERTURA BALANCEADA DO TEXTO:
-   - Distribua as questões por diferentes seções, conceitos e parágrafos do material didático (início, meio e fim do texto), garantindo uma avaliação completa e representativa do documento.
+   - Distribua as ${questionCount} questões ao longo de todo o documento didático (início, meio e fim).
 
-3. JUSTIFICATIVA PEDAGÓGICA COM CITAÇÃO (EXPLANATION):
-   - No campo "explanation", explique detalhadamente por que a alternativa correta é o gabarito, referenciando e citando o trecho ou conceito do material didático que comprova a resposta.
+3. JUSTIFICATIVA PEDAGÓGICA (EXPLANATION):
+   - No campo "explanation", explique sucintamente por que a alternativa correta é o gabarito referenciando o conceito do material.
 
-4. QUALIDADE DAS ALTERNATIVAS E DISTRATORES:
-   - Apenas 1 alternativa por questão deve ser verdadeira (is_correct = true).
-   - Os distratores (respostas incorretas) devem ser plausíveis dentro do tema da aula, porém conceitualmente errados segundo o que foi explicado no texto base.
+4. FORMATO DAS ALTERNATIVAS:
+   - Apenas 1 alternativa correta (is_correct = true) e as demais falsas.
+   - Para Múltipla Escolha: exatamente 4 opções por questão.
+   - Para Verdadeiro/Falso: exatamente 2 opções ("Verdadeiro" e "Falso").
+   - NUNCA inclua prefixos como "A)", "B)", "1.", "Questão 1:" nos textos de enunciados ou opções.
 
-5. FORMATO LIMPO:
-   - NUNCA inclua prefixos como "A)", "B)", "1.", "Questão 1:" ou "Pergunta:" nos textos de enunciados ou opções.
-   - Para Múltipla Escolha: 4 opções claras.
-   - Para Verdadeiro/Falso: 2 opções ("Verdadeiro" e "Falso").
-
-6. NÍVEL DE DIFICULDADE: ${difficultyDesc}
-7. FORMATO REQUISITADO: ${typeFormatInstructions}`
+5. NÍVEL DE DIFICULDADE: ${difficultyDesc}
+6. TIPO REQUISITADO: ${typeFormatInstructions}`
 
   const userPrompt = `MATERIAL DIDÁTICO DO PROFESSOR (FONTE EXCLUSIVA):
 ======================================================================
@@ -130,7 +131,9 @@ ${trimmedContent}
 """
 ======================================================================
 
-Com base ESTRITAMENTE no conteúdo didático acima, elabore agora a avaliação com exatamente ${questionCount} questões de nível ${difficulty.toUpperCase()}.`
+ORDEM DE EXECUÇÃO:
+Elabore agora a avaliação com EXATAMENTE ${questionCount} QUESTÕES COMPLETAS de nível ${difficulty.toUpperCase()}.
+Lembre-se: a lista 'questions' no JSON DEVE TER OBRIGATORIAMENTE ${questionCount} ITENS.`
 
   try {
     const completion = await openai.chat.completions.create({
@@ -140,7 +143,8 @@ Com base ESTRITAMENTE no conteúdo didático acima, elabore agora a avaliação 
         { role: 'user', content: userPrompt },
       ],
       response_format: zodResponseFormat(GeneratedQuizResponseSchema, 'educational_quiz'),
-      temperature: 0.3, // Temperatura baixa para máxima fidelidade e ancoragem ao texto fonte
+      temperature: 0.3,
+      max_completion_tokens: 8192,
     })
 
     const rawContent = completion.choices[0]?.message?.content
@@ -152,11 +156,52 @@ Com base ESTRITAMENTE no conteúdo didático acima, elabore agora a avaliação 
     const parsedJson = JSON.parse(rawContent)
     const validated = GeneratedQuizResponseSchema.parse(parsedJson)
 
+    let allQuestions = [...validated.questions]
+
+    // Garantia de quantidade: se o modelo retornar menos questões que o solicitado, complementa automaticamente
+    if (allQuestions.length < questionCount) {
+      const remainingNeeded = questionCount - allQuestions.length
+      console.warn(`[Quiz Generator] IA retornou ${allQuestions.length} questões de ${questionCount}. Solicitando mais ${remainingNeeded} questões para completar...`)
+
+      const existingTexts = allQuestions.map((q, i) => `${i + 1}. ${q.question_text}`).join('\n')
+      const supplementPrompt = `O professor solicitou ${questionCount} questões, mas você gerou apenas ${allQuestions.length}.
+Gere agora mais EXATAMENTE ${remainingNeeded} questões complementares e diferentes das que você já gerou abaixo:
+${existingTexts}
+
+Baseie-se estritamente no mesmo material didático. Retorne o JSON com as ${remainingNeeded} novas questões.`
+
+      try {
+        const suppCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+            { role: 'assistant', content: rawContent },
+            { role: 'user', content: supplementPrompt },
+          ],
+          response_format: zodResponseFormat(GeneratedQuizResponseSchema, 'educational_quiz_supplement'),
+          temperature: 0.4,
+          max_completion_tokens: 4096,
+        })
+
+        const suppRaw = suppCompletion.choices[0]?.message?.content
+        if (suppRaw) {
+          const suppParsed = JSON.parse(suppRaw)
+          const suppValidated = GeneratedQuizResponseSchema.parse(suppParsed)
+          if (suppValidated.questions && suppValidated.questions.length > 0) {
+            allQuestions = allQuestions.concat(suppValidated.questions.slice(0, remainingNeeded))
+          }
+        }
+      } catch (suppError) {
+        console.error('[Quiz Generator] Falha ao buscar questões suplementares:', suppError)
+      }
+    }
+
     // Pós-processamento: higienização + embaralhamento aleatório (Fisher-Yates) das alternativas
     const sanitizedQuiz: GeneratedQuizResponse = {
       title: cleanHumanText(validated.title) || `Avaliação - ${materialTitle}`,
-      summary: cleanHumanText(validated.summary || '') || `Avaliação gerada a partir do material "${materialTitle}" com ${validated.questions.length} questões.`,
-      questions: validated.questions.map((q, idx: number) => {
+      summary: cleanHumanText(validated.summary || '') || `Avaliação gerada a partir do material "${materialTitle}" com ${allQuestions.length} questões.`,
+      questions: allQuestions.map((q, idx: number) => {
         const cleanedOptions = q.options.map((opt) => ({
           option_text: cleanHumanText(opt.option_text),
           is_correct: Boolean(opt.is_correct),

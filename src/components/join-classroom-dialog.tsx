@@ -4,6 +4,7 @@ import { useState, useActionState, useEffect } from 'react'
 import { joinClassroomByCode, JoinResponse } from '@/app/(dashboard)/student/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { KeyRound, School, X } from 'lucide-react'
 
 export function JoinClassroomDialog() {
@@ -31,10 +32,8 @@ export function JoinClassroomDialog() {
         Entrar em uma Sala
       </Button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <Modal isOpen={isOpen} onClose={() => !isPending && setIsOpen(false)} maxWidth="max-w-md">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                   <School className="h-5 w-5" />
@@ -91,9 +90,7 @@ export function JoinClassroomDialog() {
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   )
 }

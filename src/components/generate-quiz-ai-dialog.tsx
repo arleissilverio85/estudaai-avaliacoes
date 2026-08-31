@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { generateQuizWithAI, ActionResponse } from '@/app/(dashboard)/teacher/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { Sparkles, FileCheck, X, BookOpen, School, BrainCircuit, Sliders, Check, AlertCircle } from 'lucide-react'
 
 interface GenerateQuizAiDialogProps {
@@ -106,10 +107,8 @@ export function GenerateQuizAiDialog({
         </Button>
       )}
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
-          <div className="w-full max-w-xl rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left my-8">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <Modal isOpen={isOpen} onClose={() => !isPending && setIsOpen(false)} maxWidth="max-w-xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 border border-indigo-500/40">
                   <BrainCircuit className="h-6 w-6" />
@@ -203,31 +202,49 @@ export function GenerateQuizAiDialog({
                 />
               </div>
 
-              {/* CONTROLE 1: NÚMERO DE QUESTÕES (5 A 15) */}
-              <div className="space-y-2 rounded-2xl bg-slate-950/80 p-4 border border-slate-800">
+              {/* CONTROLE 1: NÚMERO DE QUESTÕES (DE 5 A 15 DE CINCO EM CINCO) */}
+              <div className="space-y-3 rounded-2xl bg-slate-950/80 p-4 border border-slate-800">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                     <Sliders className="h-3.5 w-3.5 text-indigo-400" />
                     Quantidade de Questões
                   </label>
-                  <span className="rounded-lg bg-indigo-600/30 px-2.5 py-1 font-mono text-xs font-bold text-indigo-300 border border-indigo-500/40">
+                  <span className="rounded-lg bg-indigo-600/30 px-3 py-1 font-mono text-xs font-bold text-indigo-300 border border-indigo-500/40">
                     {questionCount} Questões
                   </span>
                 </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  {[
+                    { count: 5, label: '5 Questões', desc: 'Rápida' },
+                    { count: 10, label: '10 Questões', desc: 'Padrão' },
+                    { count: 15, label: '15 Questões', desc: 'Completa' },
+                  ].map((item) => (
+                    <button
+                      key={item.count}
+                      type="button"
+                      onClick={() => setQuestionCount(item.count)}
+                      className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all cursor-pointer ${
+                        questionCount === item.count
+                          ? 'border-indigo-500 bg-indigo-600/20 text-white shadow-lg shadow-indigo-600/20 ring-1 ring-indigo-500'
+                          : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="text-sm font-black">{item.label}</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">{item.desc}</span>
+                    </button>
+                  ))}
+                </div>
+
                 <input
                   type="range"
                   min="5"
                   max="15"
-                  step="1"
+                  step="5"
                   value={questionCount}
                   onChange={(e) => setQuestionCount(Number(e.target.value))}
                   className="w-full accent-indigo-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 />
-                <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>5 (Rápida)</span>
-                  <span>10 (Padrão)</span>
-                  <span>15 (Completa)</span>
-                </div>
               </div>
 
               {/* CONTROLE 2: FORMATO DAS QUESTÕES */}
@@ -343,9 +360,7 @@ export function GenerateQuizAiDialog({
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   )
 }

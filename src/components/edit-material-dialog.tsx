@@ -5,6 +5,7 @@ import { updateMaterial, ActionResponse } from '@/app/(dashboard)/teacher/action
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Modal } from '@/components/ui/modal'
 import { Edit2, BookOpen, X, Check, School, AlertCircle, FileText, Sparkles } from 'lucide-react'
 import { MaterialProcessingStatus } from '@/types/database.types'
 
@@ -67,10 +68,8 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
         <Edit2 className="h-4 w-4" />
       </button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-2xl rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <Modal isOpen={isOpen} onClose={() => !isPending && setIsOpen(false)} maxWidth="max-w-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                   <BookOpen className="h-5 w-5" />
@@ -216,9 +215,7 @@ export function EditMaterialDialog({ material, classrooms = [] }: EditMaterialDi
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   )
 }

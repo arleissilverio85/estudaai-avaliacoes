@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Modal } from '@/components/ui/modal'
 import {
   FileText,
   X,
@@ -62,11 +63,8 @@ export function StudentAttemptModal({
         Ver Respostas
       </button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-slate-900 p-6 shadow-2xl border border-slate-800 sm:p-8 text-left my-8 max-h-[90vh] overflow-y-auto">
-            {/* CABEÇALHO DO MODAL */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} maxWidth="max-w-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
                   <User className="h-6 w-6" />
@@ -227,9 +225,7 @@ export function StudentAttemptModal({
                 Fechar
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   )
 }

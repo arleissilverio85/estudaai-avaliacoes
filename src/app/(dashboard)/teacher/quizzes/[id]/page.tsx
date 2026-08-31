@@ -143,13 +143,20 @@ export default async function QuizReviewPage({ params }: Props) {
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* NAVEGAÇÃO VOLTAR */}
-      <div className="print:hidden">
+      <div className="print:hidden flex items-center gap-3">
         <Link
-          href="/teacher/quizzes"
+          href={quizData.classroom_id ? `/teacher/classrooms/${quizData.classroom_id}` : '/teacher/dashboard'}
           className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-indigo-400 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Voltar para Avaliações
+          {quizData.classrooms?.name ? `Voltar para Sala: ${quizData.classrooms.name}` : 'Voltar para Sala de Aula'}
+        </Link>
+        <span className="text-slate-700">•</span>
+        <Link
+          href="/teacher/dashboard"
+          className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          Início (Salas)
         </Link>
       </div>
 

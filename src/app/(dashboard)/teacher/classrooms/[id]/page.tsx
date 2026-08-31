@@ -8,7 +8,6 @@ import { Classroom, Quiz, Material } from '@/types/database.types'
 import { EditClassroomDialog } from '@/components/edit-classroom-dialog'
 import { EditQuizDialog } from '@/components/edit-quiz-dialog'
 import { UploadMaterialDialog } from '@/components/upload-material-dialog'
-import { GenerateQuizAiDialog } from '@/components/generate-quiz-ai-dialog'
 import { MaterialCard } from '@/components/material-card'
 import { ClassroomRankingTable, RankingEntry } from '@/components/classroom-ranking-table'
 import { ClassroomStudentsTable, StudentWithAttempts } from '@/components/classroom-students-table'
@@ -349,14 +348,14 @@ export default async function ClassroomDetailPage({ params }: Props) {
         </div>
 
         {materials.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-6 text-center">
+          <div className="rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 p-8 text-center">
             <BookOpen className="mx-auto h-8 w-8 text-slate-600" />
             <p className="mt-2 text-xs text-slate-400">
               Nenhum material vinculado a esta turma ainda. Envie arquivos para que a IA possa gerar provas baseadas neles.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {materials.map((m) => (
               <MaterialCard key={m.id} material={m} classrooms={classroomList} />
             ))}
@@ -365,17 +364,15 @@ export default async function ClassroomDetailPage({ params }: Props) {
       </div>
 
       {/* SEÇÃO 4: AVALIAÇÕES DA SALA */}
-      <div className="space-y-4 pt-4 border-t border-slate-800">
+      <div className="space-y-5 pt-6 border-t border-slate-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileCheck className="h-5 w-5 text-indigo-400" />
             <h2 className="text-lg font-bold text-white">📝 Avaliações da Sala</h2>
           </div>
-          <GenerateQuizAiDialog
-            classrooms={classroomList}
-            materials={materials}
-            initialClassroomId={classroom.id}
-          />
+          <span className="rounded-full bg-slate-800/80 px-3 py-1 text-xs font-bold text-slate-300 border border-slate-700">
+            {quizzes.length} {quizzes.length === 1 ? 'Avaliação' : 'Avaliações'}
+          </span>
         </div>
 
         {quizzes.length === 0 ? (
@@ -383,42 +380,42 @@ export default async function ClassroomDetailPage({ params }: Props) {
             <FileCheck className="mx-auto h-10 w-10 text-slate-600" />
             <h3 className="mt-2 text-sm font-bold text-slate-200">Nenhuma avaliação nesta sala</h3>
             <p className="text-xs text-slate-400 mt-1">
-              Gere avaliações automáticas com IA a partir dos materiais desta turma.
+              Gere avaliações automáticas com IA a partir dos materiais desta turma usando o botão no card do material.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {quizzes.map((quiz) => {
               const statusInfo = formatQuizStatus(quiz.status)
               return (
                 <div
                   key={quiz.id}
-                  className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-md transition-all hover:border-indigo-500/50 hover:shadow-lg"
+                  className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-md transition-all hover:border-indigo-500/50 hover:shadow-lg"
                 >
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/teacher/quizzes/${quiz.id}`}
-                        className="text-sm font-bold text-white hover:text-indigo-400 transition-colors"
+                        className="text-base font-bold text-white hover:text-indigo-400 transition-colors line-clamp-1"
                       >
                         {quiz.title}
                       </Link>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusInfo.color}`}>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border shrink-0 ${statusInfo.color}`}>
                         {statusInfo.label}
                       </span>
                     </div>
                     {quiz.description && (
-                      <p className="text-xs text-slate-400 line-clamp-1">{quiz.description}</p>
+                      <p className="text-xs text-slate-400 line-clamp-2">{quiz.description}</p>
                     )}
                     <p className="text-[11px] text-slate-500">
                       {quiz.question_count} questões • Tipo: {quiz.question_type}
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-800">
+                  <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t border-slate-800">
                     <Link
                       href={`/teacher/quizzes/${quiz.id}`}
-                      className="rounded-lg bg-indigo-600/20 px-3 py-1.5 text-xs font-bold text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-500/30"
+                      className="rounded-xl bg-indigo-600/20 px-3.5 py-2 text-xs font-bold text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-500/30"
                     >
                       Ver Prova & Ranking
                     </Link>

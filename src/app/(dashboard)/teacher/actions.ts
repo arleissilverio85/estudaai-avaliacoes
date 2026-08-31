@@ -494,6 +494,7 @@ export async function generateQuizWithAI(prevState: ActionResponse | null, formD
     }
 
     // 4. Inserir todas as questões e opções geradas
+    let insertedQuestionsCount = 0
     for (let i = 0; i < aiResult.questions.length; i++) {
       const q = aiResult.questions[i]
       const { data: questionData, error: qErr } = await (supabase.from('questions') as any)
@@ -508,9 +509,11 @@ export async function generateQuizWithAI(prevState: ActionResponse | null, formD
         .single()
 
       if (qErr || !questionData) {
-        console.error('Erro ao inserir questão:', qErr)
+        console.error(`[actions.ts] Erro ao inserir questão ${i + 1}:`, qErr)
         continue
       }
+
+      insertedQuestionsCount++
 
       // Inserir alternativas
       const optionsToInsert = q.options.map((opt, optIdx) => ({
@@ -521,8 +524,18 @@ export async function generateQuizWithAI(prevState: ActionResponse | null, formD
       }))
 
       if (optionsToInsert.length > 0) {
-        await (supabase.from('question_options') as any).insert(optionsToInsert)
+        const { error: optErr } = await (supabase.from('question_options') as any).insert(optionsToInsert)
+        if (optErr) {
+          console.error(`[actions.ts] Erro ao inserir opções da questão ${i + 1}:`, optErr)
+        }
       }
+    }
+
+    // Sincronizar question_count com o total real inserido se houver discrepância
+    if (insertedQuestionsCount > 0 && insertedQuestionsCount !== quiz.question_count) {
+      await (supabase.from('quizzes') as any)
+        .update({ question_count: insertedQuestionsCount })
+        .eq('id', quiz.id)
     }
 
     revalidatePath('/teacher/quizzes')
